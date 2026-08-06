@@ -809,6 +809,14 @@ Examples:
         help="Environment variable to pass to container (e.g. -e HF_TOKEN=xxx). Can be used multiple times.",
     )
     launch_group.add_argument(
+        "--api-key",
+        dest="api_key",
+        metavar="KEY",
+        default=os.environ.get("API_KEY"),
+        help="Require this API key on the OpenAI-compatible endpoint (sets VLLM_API_KEY in the "
+        "container, propagated to worker nodes too). Defaults to the API_KEY env var if set.",
+    )
+    launch_group.add_argument(
         "--apply-mod",
         action="append",
         dest="apply_mods",
@@ -954,6 +962,11 @@ Examples:
     # Filter out the -- separator if present
     if extra_args and extra_args[0] == "--":
         extra_args = extra_args[1:]
+
+    # --api-key (or API_KEY env var) sets VLLM_API_KEY as a container-level -e,
+    # same mechanism as HF_HUB_OFFLINE, so it reaches worker nodes too.
+    if args.api_key:
+        args.env_vars.append(f"VLLM_API_KEY={args.api_key}")
 
     # Handle --discover (can be run with or without a recipe)
     if args.discover:
@@ -1142,6 +1155,8 @@ Examples:
             print(f"Container name: {args.container_name}")
         if args.non_privileged:
             print("Non-privileged mode: Yes")
+        if args.api_key:
+            print("API key: ***set*** (VLLM_API_KEY)")
         print()
 
     # --- Build Phase ---

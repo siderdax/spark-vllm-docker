@@ -146,6 +146,26 @@ For periodic maintenance, I recommend using a filter: `docker builder prune --fi
 
 ## CHANGELOG
 
+### 2026-08-02
+
+#### 2-Node Pipeline-Parallel (pp2) Scripts
+
+Added `run-qwen3.6-27b-pp2.sh`, `run-qwen3.6-35b-pp2.sh`, and `run-qwen3.5-122b-nvfp4-pp2.sh` for the three models that already have a `-solo` variant. Each runs `-tp 1` with `--pipeline-parallel-size 2` across raven+quaker instead of the default tp2 split — pipeline parallelism moves far less data between nodes per step than tensor parallelism, so it can help when the inter-node link is the bottleneck (at the cost of not parallelizing within a single decode step).
+
+```bash
+./run-qwen3.6-27b-pp2.sh
+```
+
+#### `--api-key` Option in `run-recipe.py`
+
+`run-recipe.sh` / `run-recipe.py` now accept `--api-key KEY` to require clients to authenticate against the OpenAI-compatible endpoint. It sets `VLLM_API_KEY` as a container-level `-e` (same propagation path used for `HF_HUB_OFFLINE`), so it also reaches worker nodes in cluster mode. If omitted, it falls back to the `API_KEY` environment variable. Since every `run-*.sh` wrapper forwards its args to `run-recipe.sh`, this works out of the box for all of them:
+
+```bash
+./run-qwen3.6-27b-solo.sh --api-key sk-my-secret
+# or
+API_KEY=sk-my-secret ./run-dsv4f.sh
+```
+
 ### 2026-07-10
 
 #### Optional earlyoom monitor
