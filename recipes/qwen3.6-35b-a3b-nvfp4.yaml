@@ -24,6 +24,11 @@ defaults:
 # Environment variables
 env:
   VLLM_MARLIN_USE_ATOMIC_ADD: 1
+  # quaker(워커 노드)는 인터넷이 없어 HF Hub 조회(merges.txt 등)가
+  # DNS 실패로 죽고 tokenizer 로드가 실패함. 로컬 캐시만 쓰도록 강제.
+  # (컨테이너 레벨 -e로도 넣어야 Ray 워커까지 확실히 전파됨: run-qwen3.6-35b.sh 참고)
+  HF_HUB_OFFLINE: 1
+  TRANSFORMERS_OFFLINE: 1
 
 # The vLLM serve command template
 command: |

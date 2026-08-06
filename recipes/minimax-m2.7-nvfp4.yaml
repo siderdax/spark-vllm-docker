@@ -1,0 +1,50 @@
+# Recipe: MiniMax-M2.7-NVFP4
+# MiniMax M2.7 model in NVIDIA NVFP4 quantization (modelopt)
+
+recipe_version: "1"
+name: MiniMax-M2.7-NVFP4
+description: vLLM serving nvidia/MiniMax-M2.7-NVFP4 with Ray distributed backend
+
+# HuggingFace model to download (optional, for --download-model)
+model: nvidia/MiniMax-M2.7-NVFP4
+
+# Container image to use
+container: vllm-node
+
+# Can only be run in a cluster (131GB weights > single Spark)
+cluster_only: true
+
+# No mods required
+mods: []
+
+# Default settings (can be overridden via CLI)
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  tensor_parallel: 2
+  gpu_memory_utilization: 0.8
+  max_model_len: 196608
+
+# Environment variables
+# quaker(워커 노드)는 인터넷이 없어 HF Hub 조회(merges.txt 등)가
+# DNS 실패로 죽고 tokenizer 로드가 실패함. 로컬 캐시만 쓰도록 강제.
+# (컨테이너 레벨 -e로도 넣어야 Ray 워커까지 확실히 전파됨: run-minimax-m2.7.sh 참고)
+env:
+  HF_HUB_OFFLINE: 1
+  TRANSFORMERS_OFFLINE: 1
+
+# The vLLM serve command template
+command: |
+  vllm serve nvidia/MiniMax-M2.7-NVFP4 \
+      --trust-remote-code \
+      --port {port} \
+      --host {host} \
+      --gpu-memory-utilization {gpu_memory_utilization} \
+      -tp {tensor_parallel} \
+      --distributed-executor-backend ray \
+      --max-model-len {max_model_len} \
+      --load-format fastsafetensors \
+      --kv-cache-dtype fp8 \
+      --enable-auto-tool-choice \
+      --tool-call-parser minimax_m2 \
+      --reasoning-parser minimax_m2

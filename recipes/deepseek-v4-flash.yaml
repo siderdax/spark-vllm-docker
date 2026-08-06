@@ -23,6 +23,14 @@ defaults:
   host: 0.0.0.0
   tensor_parallel: 2
   gpu_memory_utilization: 0.8
+  # Verified 2026-08-06 on raven+quaker (121GB unified memory) with the node
+  # otherwise idle (111.14/121.63 GiB free at startup): model load is 75.8 GiB
+  # per node and 500000 starts fine, leaving 13.84 GiB of KV (821,618 tokens,
+  # 1.64x concurrency at full length). A 433,939-token request was served
+  # end-to-end in 287s with correct needle recall.
+  # Caveat: KV is sized from whatever unified memory is free at startup, so a
+  # co-tenant workload (e.g. comfyui-stack) shrinks it and 500000 may not fit —
+  # drop max_model_len (262144 is a safe fallback) when sharing the nodes.
   max_model_len: 500000
   block_size: 256
   max_num_seqs: 4

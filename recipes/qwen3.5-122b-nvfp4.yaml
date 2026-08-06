@@ -1,20 +1,19 @@
-# Recipe: Qwen3.5-122B-A10B-FP8
-# Qwen3.5-122B model in native FP8 quantization
+# Recipe: Qwen3.5-122B-A10B-NVFP4
+# Qwen3.5-122B in NVIDIA NVFP4 quantization (modelopt).
+# 77.8GB weights: fits a single Spark (--solo -tp 1) or 2-node cluster (default).
+# Backend flags follow the proven qwen3.6 NVFP4 recipe (marlin MoE + flashinfer + fp8 KV).
 
 recipe_version: "1"
-name: Qwen3.5-122B-FP8
-description: vLLM serving Qwen3.5-122B-FP8
+name: Qwen3.5-122B-NVFP4
+description: vLLM serving nvidia/Qwen3.5-122B-A10B-NVFP4
 
 # HuggingFace model to download (optional, for --download-model)
-model: Qwen/Qwen3.5-122B-A10B-FP8
-
-# Only cluster is supported
-cluster_only: true
+model: nvidia/Qwen3.5-122B-A10B-NVFP4
 
 # Container image to use
 container: vllm-node
 
-# No mods required
+# Chat template fix applies to the whole Qwen3.5 family
 mods:
   - mods/fix-qwen3.5-chat-template
 
@@ -28,20 +27,24 @@ defaults:
   max_num_batched_tokens: 8192
 
 # Environment variables
-# quaker(워커 노드)는 인터넷이 없어 HF Hub 조회(merges.txt 등)가
-# DNS 실패로 죽고 tokenizer 로드가 실패함. 로컬 캐시만 쓰도록 강제.
-# (컨테이너 레벨 -e로도 넣어야 Ray 워커까지 확실히 전파됨: ./run-recipe.sh qwen3.5-122b-fp8 --env HF_HUB_OFFLINE=1 --env TRANSFORMERS_OFFLINE=1)
 env:
+  VLLM_MARLIN_USE_ATOMIC_ADD: 1
+  # quaker(워커 노드)는 인터넷이 없어 HF Hub 조회(merges.txt 등)가
+  # DNS 실패로 죽고 tokenizer 로드가 실패함. 로컬 캐시만 쓰도록 강제.
   HF_HUB_OFFLINE: 1
   TRANSFORMERS_OFFLINE: 1
 
 # The vLLM serve command template
 command: |
-  vllm serve Qwen/Qwen3.5-122B-A10B-FP8 \
+  vllm serve nvidia/Qwen3.5-122B-A10B-NVFP4 \
     --max-model-len {max_model_len} \
     --gpu-memory-utilization {gpu_memory_utilization} \
     --port {port} \
     --host {host} \
+    --trust-remote-code \
+    --kv-cache-dtype fp8 \
+    --attention-backend flashinfer \
+    --moe-backend marlin \
     --load-format fastsafetensors \
     --enable-prefix-caching \
     --enable-auto-tool-choice \
