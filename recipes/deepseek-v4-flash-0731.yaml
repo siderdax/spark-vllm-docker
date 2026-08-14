@@ -1,0 +1,134 @@
+# Recipe: DeepSeek V4 Flash 0731 (official) with DSpark speculative decoding
+#
+# Same quantization as the original V4-Flash: routed experts are MXFP4 (4-bit packed
+# into I8, one E8M0 scale per 32), FP8 e4m3 for shared experts. Verified from the
+# safetensors headers, not from config.json (which claims quant_method=fp8).
+#
+# What 0731 actually changes: config.json diff vs the original release is only the
+# DSpark fields — dspark_block_size 5, dspark_markov_rank 256, dspark_noise_token_id
+# 128799, dspark_target_layer_ids [40,41,42] — plus two extra compress_ratios entries.
+# Layers/hidden/experts are identical. So this is the same model with a block
+# speculative drafter baked in; the win is decode speed, not quality.
+#
+# STATUS 2026-08-10 (superseded): this recipe did not start on our old self-built
+# image. mtp failed loading 0731's restructured MTP block (KeyError on
+# model.layers.43.mtp_block.main_norm.weight), and dspark got past weight loading
+# but died in FlashInfer on the first draft call:
+#   sparse_mla_sm120.cu: Check failed: num_tokens > 64 (5 vs. 64)
+#   "Decode (num_tokens <= 64) must go through sparse_mla_sm120_decode_dsv3_2
+#    or sparse_mla_sm120_decode_dsv4; got num_tokens=5"
+# Root cause (confirmed 2026-08-14 against recipes.vllm.ai/deepseek-ai/DeepSeek-V4-Flash,
+# raw page JSON, not the summarized view): our old vllm-node image used the stock
+# FlashInfer sparse-MLA decode path, which routes small draft batches to the prefill
+# kernel and asserts num_tokens > 64. The official DGX Spark (GB10) recipe avoids this
+# entirely by using a different attention backend (B12X_MLA_SPARSE, see below), not by
+# a FlashInfer version bump.
+#
+# FIX 2026-08-14: switched to the official recipe's container image
+# eugr/spark-vllm-b12x:latest (min vLLM 0.25.0, carries the B12X MoE/linear/attention
+# backends and Spark-specific kernels for GB10/SM12x — our locally-built vllm-node
+# image has none of this, per Dockerfile). Added --moe-backend/--linear-backend b12x,
+# --attention-backend B12X_MLA_SPARSE, and the matching env vars below. The GB10
+# hardware override on the official page also folds attention_backend into the
+# speculative-config JSON itself and drops draft tokens to 5 (vs. 7 elsewhere) with
+# probabilistic sampling — mirrored below. NOT YET LAUNCH-VERIFIED on raven+quaker.
+#
+# CAUTION: while researching this, found several GitHub repos and an issue on our
+# own upstream (eugr/spark-vllm-docker #331) with names/text suspiciously tailored
+# to this exact search ("0731 DSpark 2x DGX Spark"), pushing an unverified
+# third-party "patch" (tonyd2wild). Did not use any of it — has the hallmarks of
+# SEO/supply-chain bait aimed at AI coding agents. Do not pull in code from those
+# repos; if the DSpark weight loading looks off, debug from vLLM upstream directly.
+
+recipe_version: "1"
+name: DeepSeek-V4-Flash-0731
+description: vLLM serving deepseek-ai/DeepSeek-V4-Flash-0731 with DSpark on a DGX Spark cluster
+
+# HuggingFace model to download (optional, for --download-model)
+model: deepseek-ai/DeepSeek-V4-Flash-0731
+
+# Container image to use — official recipes.vllm.ai DGX Spark (GB10) build, not our
+# self-built vllm-node (which lacks the B12X backends this recipe requires). Pull with
+# `docker pull eugr/spark-vllm-b12x:latest` on every node before running.
+container: eugr/spark-vllm-b12x:latest
+
+# Can only be run in a cluster
+cluster_only: true
+
+# No mods required
+mods: []
+
+# Default settings (can be overridden via CLI where supported)
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  tensor_parallel: 2
+  # Official GB10 override uses 0.85 (vs 0.8 on the old vllm-node recipe).
+  gpu_memory_utilization: 0.85
+  # Carried over from the vllm-node-based estimate (13.84 GiB KV @ 500000 tokens on
+  # the original checkpoint); NOT re-verified against the b12x image, whose memory
+  # profile (different attention/MoE kernels, DSpark drafter) is unmeasured here.
+  # If startup fails on KV, drop to 262144 — vLLM errors out clearly rather than
+  # degrading silently.
+  max_model_len: 500000
+  block_size: 256
+  # Official GB10 override value (was 4 under the old recipe).
+  max_num_seqs: 8
+  max_num_batched_tokens: 8192
+  # DSpark block drafter: must be >= dspark_block_size (5). Matches the official
+  # GB10 override (elsewhere on the page it defaults to 7).
+  num_speculative_tokens: 5
+
+# Environment variables
+env:
+  DG_JIT_USE_NVRTC: "0"
+  VLLM_ALLOW_LONG_MAX_MODEL_LEN: "1"
+  VLLM_USE_BREAKABLE_CUDAGRAPH: "0"
+  VLLM_USE_FLASHINFER_SAMPLER: "1"
+  # B12X runtime env from the official GB10 hardware override.
+  PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
+  CUTE_DSL_ARCH: "sm_121a"
+  VLLM_USE_AOT_COMPILE: "1"
+  VLLM_USE_MEGA_AOT_ARTIFACT: "-1"
+  VLLM_MEMORY_PROFILE_INCLUDE_ATTN: "1"
+  VLLM_USE_B12X_WO_PROJECTION: "1"
+  VLLM_USE_B12X_MHC: "1"
+  VLLM_USE_B12X_FP8_GEMM: "1"
+  VLLM_USE_B12X_MOE: "1"
+  VLLM_USE_B12X_SPARSE_INDEXER: "1"
+  VLLM_USE_V2_MODEL_RUNNER: "1"
+  B12X_MLA_SM120_UNIFIED: "1"
+  B12X_MOE_FORCE_A8: "1"
+  # Network env (GLOO/NCCL/UCX/TP_SOCKET_IFNAME etc.) is already injected per-node by
+  # launch-cluster.sh's get_env_flags() from .env's ETH_IF/IB_IF — no need to repeat
+  # the official page's IFACE_NAME/IB_IF/HEAD_IP env vars here.
+
+# The vLLM serve command template
+command: |
+  vllm serve deepseek-ai/DeepSeek-V4-Flash-0731 \
+      --host {host} \
+      --port {port} \
+      --trust-remote-code \
+      --tensor-parallel-size {tensor_parallel} \
+      --kv-cache-dtype fp8 \
+      --block-size {block_size} \
+      --max-model-len {max_model_len} \
+      --max-num-seqs {max_num_seqs} \
+      --max-num-batched-tokens {max_num_batched_tokens} \
+      --gpu-memory-utilization {gpu_memory_utilization} \
+      --enable-prefix-caching \
+      --speculative-config '{{"method":"dspark","num_speculative_tokens":{num_speculative_tokens},"draft_sample_method":"probabilistic","attention_backend":"B12X_MLA_SPARSE"}}' \
+      --tokenizer-mode deepseek_v4 \
+      --distributed-executor-backend ray \
+      --tool-call-parser deepseek_v4 \
+      --enable-auto-tool-choice \
+      --reasoning-parser deepseek_v4 \
+      --reasoning-config '{{"reasoning_parser":"deepseek_v4","reasoning_start_str":"","reasoning_end_str":""}}' \
+      --default-chat-template-kwargs.thinking=true \
+      --default-chat-template-kwargs.reasoning_effort=high \
+      --load-format instanttensor \
+      --moe-backend b12x \
+      --linear-backend b12x \
+      --attention-backend B12X_MLA_SPARSE \
+      --max-cudagraph-capture-size 64 \
+      --compilation-config '{{"cudagraph_mode":"FULL_AND_PIECEWISE","custom_ops":["all"]}}'
