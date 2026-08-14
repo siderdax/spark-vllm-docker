@@ -146,6 +146,16 @@ For periodic maintenance, I recommend using a filter: `docker builder prune --fi
 
 ## CHANGELOG
 
+### 2026-08-14
+
+#### `context-bench.py` long-context correctness test
+
+Added a needle-in-a-haystack benchmark (see [Benchmarking](#9-benchmarking)) that plants a random number at a configurable depth in a long prompt and checks the running server both survives the request near its `--max-model-len` and recalls the number correctly — `llama-benchy` covers throughput, this covers "does the long context actually work." Used it to verify `deepseek-v4-flash-0731` at 500000 on raven+quaker: 9/9 passed across 120k/300k/490k-token prompts and three needle depths each.
+
+#### DeepSeek-V4-Flash-0731 DSpark fix: official B12X image
+
+`recipes/deepseek-v4-flash-0731.yaml` previously failed to start DSpark speculative decoding on our self-built `vllm-node` image (`sparse_mla_sm120.cu: Check failed: num_tokens > 64`), and `mtp` can't load 0731's restructured MTP block at all. Switched the recipe's container to the official `recipes.vllm.ai` DGX Spark (GB10) image, `eugr/spark-vllm-b12x:latest`, and added the matching `--moe-backend`/`--linear-backend`/`--attention-backend b12x`/`B12X_MLA_SPARSE` flags and env vars. Verified end-to-end on raven+quaker (server starts, health check passes, long-context bench above).
+
 ### 2026-08-02
 
 #### 2-Node Pipeline-Parallel (pp2) Scripts
@@ -1785,7 +1795,24 @@ InstantTensor is available with `--load-format instanttensor`. Several large-mod
 
 ## 9\. Benchmarking
 
-I recommend using [llama-benchy](https://github.com/eugr/llama-benchy) - a new benchmarking tool that delivers results in the same format as llama-bench from llama.cpp suite.
+I recommend using [llama-benchy](https://github.com/eugr/llama-benchy) - a new benchmarking tool that delivers results in the same format as llama-bench from llama.cpp suite. That covers throughput/latency; it doesn't tell you whether a long `--max-model-len` actually works.
+
+### Long-context correctness (`context-bench.py`)
+
+`context-bench.py` is a needle-in-a-haystack test against a running OpenAI-compatible server: it builds a long filler prompt with a random number planted at a given depth, asks the model to recall it, and checks both that the request completes (no OOM/crash/timeout near the configured `--max-model-len`) and that the answer is actually correct.
+
+```bash
+# Against a locally served model, auto-detected from /v1/models
+./context-bench.py
+
+# Explicit sizes (target prompt tokens) and needle depths (0.0=start, 1.0=end)
+./context-bench.py --sizes 120000,300000,490000 --depths 0.1,0.5,0.9
+
+# Remote server / different API key
+./context-bench.py --base-url http://raven:8000/v1 --api-key sk-my-secret
+```
+
+Uses `$API_KEY` or `./api_key.txt` the same way the `run-*.sh` wrappers do. Reasoning/thinking is disabled per-request by default for a clean signal; pass `--thinking` to leave it on. Results are written to `context-bench-results.json` and exit non-zero if any case errored or failed recall.
 
 ## 10\. Downloading Models
 
