@@ -1,0 +1,80 @@
+# Recipe: Qwen3.8-27B-FP8
+# Qwen3.8-27B: native vision-language dense model (hybrid Gated DeltaNet + Gated
+# Attention, same "Qwen3_5ForConditionalGeneration" architecture family as
+# Qwen3.6-27B, now with an attached ViT + image/video tokens) in native FP8.
+# ~27GB weights (+ small vision tower) — fits solo on a single Spark node with
+# headroom, but also supports tp2 across raven+quaker (dense = compute-bound,
+# so splitting can still help decode latency even though it doesn't need the
+# extra memory).
+# Chosen over hypothetical NVFP4 for quality, same rationale as Qwen3.6-27B-FP8:
+# recipes/qwen3.6-27b-fp8.yaml
+#
+# Chat template: Qwen3.8's shipped chat_template.jinja is the same vintage/bugs
+# as the pre-fix Qwen3.6 template (no developer-role support, tool_call argument
+# handling breaks on non-mapping args, no auto-close for a dangling <think> before
+# a <tool_call>) — see mods/fix-qwen3.6-chat-template. Unlike Qwen3.6, Qwen3.8's
+# template also carries a reasoning_effort (xhigh/medium/low) system-prompt
+# injection that the plain qwen3.6 fix doesn't have, so blindly reusing that mod
+# would silently drop a headline Qwen3.8 feature. mods/fix-qwen3.8-chat-template
+# ports the same robustness fixes onto Qwen3.8's actual template instead, keeping
+# reasoning_effort intact. Tune it per-request via:
+#   --default-chat-template-kwargs '{"reasoning_effort": "low"}'   (or "medium"/"xhigh", default xhigh)
+#   --default-chat-template-kwargs '{"enable_thinking": false}'    (disable thinking entirely)
+#
+# MTP: the checkpoint ships a trained MTP draft head (mtp.safetensors). Not
+# enabled by default here for stability (this repo has no prior track record
+# running Qwen's native `mtp` speculative method, only the separate DFlash
+# draft model used by recipes/qwen3.6-35b-a3b-fp8-dflash.yaml). To try it:
+#   --speculative-config '{"method":"mtp","num_speculative_tokens":3}'
+#
+# Verified against the official vLLM recipe: https://recipes.vllm.ai/Qwen/Qwen3.8-27B
+# Modes: run-qwen3.8-27b.sh (tp2 cluster, default) / run-qwen3.8-27b-solo.sh (tp1 solo) / run-qwen3.8-27b-pp2.sh (pp2 cluster)
+
+recipe_version: "1"
+name: Qwen3.8-27B-FP8
+description: vLLM serving Qwen/Qwen3.8-27B-FP8 (dense, vision-language, solo or tp2)
+
+# HuggingFace model to download (optional, for --download-model)
+model: Qwen/Qwen3.8-27B-FP8
+
+# Container image to use
+container: vllm-node
+
+mods:
+  - mods/fix-qwen3.8-chat-template
+
+# Default settings (can be overridden via CLI). tensor_parallel:2 is the
+# cluster default; run-qwen3.8-27b-solo.sh overrides to --tensor-parallel 1.
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  tensor_parallel: 2
+  gpu_memory_utilization: 0.7
+  max_model_len: 262144
+
+# Environment variables
+# quaker(워커 노드)는 인터넷이 없어 HF Hub 조회(merges.txt 등)가
+# DNS 실패로 죽고 tokenizer 로드가 실패함. 로컬 캐시만 쓰도록 강제.
+# (컨테이너 레벨 -e로도 넣어야 Ray 워커까지 확실히 전파됨: run-qwen3.8-27b.sh 참고)
+env:
+  HF_HUB_OFFLINE: 1
+  TRANSFORMERS_OFFLINE: 1
+
+# The vLLM serve command template
+command: |
+  vllm serve Qwen/Qwen3.8-27B-FP8 \
+    --host {host} \
+    --port {port} \
+    --max-model-len {max_model_len} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --trust-remote-code \
+    --enable-auto-tool-choice \
+    --tool-call-parser qwen3_xml \
+    --reasoning-parser qwen3 \
+    --kv-cache-dtype fp8 \
+    --load-format fastsafetensors \
+    --attention-backend flashinfer \
+    --enable-prefix-caching \
+    --chat-template fixed_chat_template.jinja \
+    -tp {tensor_parallel} \
+    --distributed-executor-backend ray
