@@ -1,5 +1,19 @@
 # Recipe: Qwen3.6-35B-A3B-NVFP4-Marlin
 # Qwen3.6-35B-A3B model in NVIDIA NVFP4 format with Marlin MoE backend.
+#
+# Sampling: --override-generation-config below sets Qwen's documented thinking-mode
+# defaults for this A3B (MoE) variant: temperature=1.0, top_p=0.95, top_k=20,
+# presence_penalty=1.5 — note presence_penalty=1.5 here vs 0.0 recommended for the
+# dense 27B model (helps avoid MoE repetition loops). vLLM's own top_k/presence_penalty
+# defaults (-1 / 0.0) diverge from this, so this only fills gaps for clients that
+# don't set their own sampling params. This recipe uses the stock HF chat template
+# (no local mods/fix-qwen3.6-chat-template override), so no reasoning_effort or
+# preserve_thinking claims from the other Qwen3.6 recipes are asserted here.
+#
+# Tool-call parser: qwen3_xml (below) is correct — do not switch to qwen3_coder even
+# though Qwen's own model card recommends it. It has a known vLLM bug (infinite "!"
+# stream on long inputs with a tool call, vllm-project/vllm#39056) affecting the
+# whole Qwen3 family, not just this model.
 
 recipe_version: "1"
 name: Qwen3.6-35B-A3B-NVFP4-Marlin
@@ -52,4 +66,5 @@ command: |
     --reasoning-parser qwen3 \
     --tool-call-parser qwen3_xml \
     --enable-auto-tool-choice \
+    --override-generation-config '{{"temperature": 1.0, "top_p": 0.95, "top_k": 20, "presence_penalty": 1.5}}' \
     --distributed-executor-backend ray

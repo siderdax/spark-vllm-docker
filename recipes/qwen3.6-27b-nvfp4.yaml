@@ -8,6 +8,24 @@
 # accept NVFP4's more aggressive quantization (FP8 stays closer to bf16 quality):
 # recipes/qwen3.6-27b-fp8.yaml
 # Modes: run-qwen3.6-27b-nvfp4.sh (tp2 cluster, default) / run-qwen3.6-27b-nvfp4-solo.sh (tp1 solo) / run-qwen3.6-27b-nvfp4-pp2.sh (pp2 cluster)
+#
+# Sampling: --override-generation-config below sets Qwen's documented thinking-mode
+# defaults (temperature=1.0, top_p=0.95, top_k=20) — vLLM's own top_k default is
+# unbounded (-1), which diverges from Qwen's recommendation and can let <think>
+# generations ramble. This only fills gaps: a client that sends its own sampling
+# params still wins.
+#
+# Unlike Qwen3.8, this chat template (mods/fix-qwen3.6-chat-template) has no
+# reasoning_effort mechanism — thinking is just on/off, no xhigh/medium/low budget.
+# preserve_thinking still defaults to true though, and re-injects every prior turn's
+# full <think> block into context on multi-turn requests, which snowballs context
+# size (and latency) over a long opencode/agentic session:
+#   --default-chat-template-kwargs '{"preserve_thinking": false}'
+#
+# Tool-call parser: qwen3_xml (below) is correct — do not switch to qwen3_coder even
+# though Qwen's own model card recommends it. It has a known vLLM bug (infinite "!"
+# stream on long inputs with a tool call, vllm-project/vllm#39056) affecting the
+# whole Qwen3 family, not just this model.
 
 recipe_version: "1"
 name: Qwen3.6-27B-NVFP4
@@ -50,6 +68,7 @@ command: |
     --enable-auto-tool-choice \
     --tool-call-parser qwen3_xml \
     --reasoning-parser qwen3 \
+    --override-generation-config '{{"temperature": 1.0, "top_p": 0.95, "top_k": 20}}' \
     --kv-cache-dtype fp8 \
     --load-format fastsafetensors \
     --attention-backend flashinfer \

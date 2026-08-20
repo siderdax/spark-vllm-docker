@@ -148,6 +148,33 @@ For periodic maintenance, I recommend using a filter: `docker builder prune --fi
 
 ### 2026-08-20
 
+#### Qwen3.6: thinking-mode sampling defaults across all 6 recipes
+
+Followed up on the Qwen3.8 audit below by checking all 6 Qwen3.6 recipes
+(`qwen3.6-27b-fp8`, `qwen3.6-27b-nvfp4`, `qwen3.6-35b-a3b-fp8[-dflash]`,
+`qwen3.6-35b-a3b-nvfp4[-no-mtp]`) for the same class of gaps.
+
+Tool-call parser was already correct everywhere (`qwen3_xml`) — worth noting since
+Qwen's own Qwen3.6 model cards recommend `qwen3_coder`, which is stale/wrong advice:
+that parser has a known vLLM bug producing an infinite "!" stream on long inputs
+containing a tool call (vllm-project/vllm#39056), affecting the whole Qwen3 family,
+not just 3.8.
+
+Sampling defaults, however, were missing everywhere (none of the 6 had
+`--override-generation-config`). Added Qwen's documented thinking-mode recommendation
+to each, which differs by architecture: the dense 27B recipes get
+`temperature=1.0, top_p=0.95, top_k=20` (same as 3.8); the A3B (MoE) recipes get
+`temperature=1.0, top_p=0.95, top_k=20, presence_penalty=1.5` — Qwen recommends a
+nonzero presence_penalty for the MoE variant specifically (dense recommends 0.0,
+vLLM's own default), likely to curb MoE repetition loops.
+
+Also documented (in recipes with the local `fix-qwen3.6-chat-template` mod) that
+this template has no `reasoning_effort` mechanism at all — thinking is on/off only,
+unlike Qwen3.8's xhigh/medium/low — but `preserve_thinking` still defaults to true
+and carries the same context-snowballing risk on long multi-turn sessions. The two
+NVFP4-Marlin recipes use the stock HF chat template (no local mod), so no
+reasoning_effort/preserve_thinking claims were asserted for those two.
+
 #### Qwen3.8-27B: thinking-mode sampling defaults + opencode-hang troubleshooting doc
 
 Added `--override-generation-config '{"temperature": 1.0, "top_p": 0.95, "top_k": 20}'` to
