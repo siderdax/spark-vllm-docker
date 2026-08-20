@@ -66,4 +66,5 @@ command: |
       --reasoning-config '{{"reasoning_parser":"deepseek_v4","reasoning_start_str":"","reasoning_end_str":""}}' \
       --default-chat-template-kwargs.thinking=true \
       --default-chat-template-kwargs.reasoning_effort=max \
+      --override-generation-config '{{"temperature": 1.0, "top_p": 0.95}}' \
       --load-format instanttensor
