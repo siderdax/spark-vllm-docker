@@ -125,7 +125,7 @@ command: |
       --reasoning-parser deepseek_v4 \
       --reasoning-config '{{"reasoning_parser":"deepseek_v4","reasoning_start_str":"","reasoning_end_str":""}}' \
       --default-chat-template-kwargs.thinking=true \
-      --default-chat-template-kwargs.reasoning_effort=high \
+      --default-chat-template-kwargs.reasoning_effort=max \
       --load-format instanttensor \
       --moe-backend b12x \
       --linear-backend b12x \
