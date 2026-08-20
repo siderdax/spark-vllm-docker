@@ -29,6 +29,61 @@
 #
 # Verified against the official vLLM recipe: https://recipes.vllm.ai/Qwen/Qwen3.8-27B
 # Modes: run-qwen3.8-27b.sh (tp2 cluster, default) / run-qwen3.8-27b-solo.sh (tp1 solo) / run-qwen3.8-27b-pp2.sh (pp2 cluster)
+#
+# --- Troubleshooting: opencode session hangs with no output ---
+#
+# Sampling: --override-generation-config below sets Qwen's documented thinking-mode
+# defaults (temperature=1.0, top_p=0.95, top_k=20 — vLLM's own top_k default is
+# unbounded (-1), which diverges from Qwen's recommendation and can let thinking
+# ramble/loop). This only fills gaps: a client (e.g. opencode) that explicitly sends
+# its own temperature/top_p still wins, so this isn't a full fix if the client is
+# misconfigured — see the diagnostic step below. min_p/presence_penalty are left
+# alone since vLLM's defaults (0.0/0.0) already match Qwen's recommendation.
+#
+# reasoning_effort defaults to xhigh (see chat-template note above). Community
+# reports (and Simon Willison's own benchmark: ~21 min / 22k reasoning tokens for a
+# single pelican SVG on DGX Spark/M5 Max) show xhigh can take 20-90 min even on
+# simple prompts. If a session looks hung, try lowering effort first:
+#   --default-chat-template-kwargs '{"reasoning_effort": "medium"}'
+#
+# preserve_thinking defaults to true in the template, which re-injects every prior
+# turn's full <think> block into context on multi-turn requests — this snowballs
+# context size (and therefore latency) over a long opencode/agentic session. Disable
+# it for long coding sessions with:
+#   --default-chat-template-kwargs '{"preserve_thinking": false}'
+#
+# Diagnosing a hang: curl the server directly with
+# stream_options: {"include_usage": true} and check finish_reason.
+#   "length" with completion_tokens pinned at the request's max_tokens -> the
+#     reasoning budget was exhausted before any content was emitted (lower
+#     reasoning_effort or raise max_tokens).
+#   "stop" with empty content -> reasoning-parser mismatch, not a budget issue.
+#   curl returns fine but opencode shows nothing -> opencode/proxy-side timeout,
+#     not this server.
+#
+# Tool-call parser: qwen3_xml (below) is the correct choice, confirmed against vLLM
+# docs/issue tracker. qwen3_coder has a known vLLM bug producing an infinite stream
+# of "!" on long inputs containing a tool call — do not switch to it.
+#
+# TP2 (raven+quaker) vs TP1-solo: benchmarked 2026-08-20 with llama-benchy
+# (--pp 2048,16384 --tg 256 --exact-tg --concurrency 1 --runs 3, thinking off,
+# identical flags otherwise incl. --override-generation-config above). TP2 won
+# clearly on *both* axes, even at concurrency=1 (single interactive request):
+#   pp2048:  tp2 2719 t/s  vs  solo 1936 t/s   (+40%)
+#   pp16384: tp2 2847 t/s  vs  solo 1793 t/s   (+59%)
+#   tg256:   tp2 15.2 t/s  vs  solo  8.4 t/s   (+81%, ~2x)
+# Counter-intuitive if you assume TP overhead is dominated by cross-node
+# all-reduce latency (that intuition holds on NVLink-connected multi-GPU
+# servers, where comms are near-free vs FLOPs) — but raven+quaker are separate
+# GB10 chips with their own local (bandwidth-limited, unified LPDDR5X) memory,
+# connected by a *direct* QSFP/RoCE link (no switch hop). Decode is
+# memory-bandwidth-bound: reading ~27GB of weights per step off one chip's
+# local memory is the bottleneck, and TP2 roughly halves that per-chip read by
+# splitting the weights across two independent memory pools — a near-linear
+# win that the (apparently small, thanks to the direct link) network tax
+# doesn't come close to offsetting. tp2 is the right default; don't switch to
+# solo for latency reasons. MTP speculative decoding (commented above) was not
+# part of this benchmark and remains untested.
 
 recipe_version: "1"
 name: Qwen3.8-27B-FP8
@@ -71,6 +126,7 @@ command: |
     --enable-auto-tool-choice \
     --tool-call-parser qwen3_xml \
     --reasoning-parser qwen3 \
+    --override-generation-config '{{"temperature": 1.0, "top_p": 0.95, "top_k": 20}}' \
     --kv-cache-dtype fp8 \
     --load-format fastsafetensors \
     --attention-backend flashinfer \

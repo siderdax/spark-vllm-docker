@@ -146,6 +146,32 @@ For periodic maintenance, I recommend using a filter: `docker builder prune --fi
 
 ## CHANGELOG
 
+### 2026-08-20
+
+#### Qwen3.8-27B: thinking-mode sampling defaults + opencode-hang troubleshooting doc
+
+Added `--override-generation-config '{"temperature": 1.0, "top_p": 0.95, "top_k": 20}'` to
+`recipes/qwen3.8-27b-fp8.yaml` — Qwen's documented thinking-mode sampling recommendation. vLLM
+defaults `top_k` to unbounded (-1), which diverges from that recommendation and can let `<think>`
+generations ramble; this only fills gaps for clients that don't set their own sampling params.
+Also expanded the recipe's header comment into a troubleshooting section covering opencode
+sessions that hang with no output: how to diagnose via `finish_reason` on a direct curl request,
+the existing `reasoning_effort`/`preserve_thinking` per-request overrides (defaults unchanged —
+still `xhigh`/`true`), and confirmation that `qwen3_xml` (not `qwen3_coder`, which has a known vLLM
+bug) is the correct tool-call parser.
+
+Benchmarked TP2 (raven+quaker) vs TP1-solo with `llama-benchy` (`--pp 2048,16384 --tg 256
+--exact-tg --concurrency 1 --runs 3`, thinking off, otherwise identical flags) to settle whether
+dual-Spark interconnect overhead hurts single-request decode latency for this dense 27B model. It
+doesn't — TP2 won on every axis even at concurrency 1: prefill +40-59% (2719→1936 t/s at pp2048,
+2847→1793 t/s at pp16384) and decode +81% (~2x: 15.2→8.4 t/s at tg256). Turns out the intuition
+that TP overhead is dominated by cross-node communication latency doesn't hold here — raven and
+quaker are separate GB10 chips with their own bandwidth-limited local memory connected by a
+*direct* QSFP/RoCE link (no switch hop), so decode's real bottleneck (reading ~27GB of weights per
+step off one chip's memory) gets roughly halved by splitting across two independent memory pools,
+and the direct-link network tax doesn't come close to offsetting that. tp2 stays the recipe
+default; MTP speculative decoding remains untested.
+
 ### 2026-08-14
 
 #### `context-bench.py` long-context correctness test
