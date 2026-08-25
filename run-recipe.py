@@ -129,6 +129,31 @@ def ensure_ray_backend(command: str) -> str:
     return command.rstrip() + " --distributed-executor-backend ray"
 
 
+SPECULATIVE_CONFIG_RE = re.compile(
+    r"--speculative-config(?:=|\s+)(?:'[^']*'|\"[^\"]*\"|\{[^{}]*\})"
+)
+
+
+def strip_speculative_config(command: str) -> str:
+    """Remove vLLM speculative-config flag and its argument from a command."""
+    command = SPECULATIVE_CONFIG_RE.sub("", command)
+    lines = command.split("\n")
+    filtered_lines = [line for line in lines if line.strip() not in ("", "\\")]
+    return "\n".join(filtered_lines)
+
+
+def update_speculative_tokens(command: str, num_tokens: int) -> str:
+    """Update or add num_speculative_tokens in --speculative-config within command."""
+    if "--speculative-config" in command:
+        return re.sub(
+            r'("num_speculative_tokens"\s*:\s*)\d+',
+            rf'\g<1>{num_tokens}',
+            command,
+        )
+    else:
+        return command.rstrip() + f" --speculative-config '{{\"method\":\"mtp\",\"num_speculative_tokens\":{num_tokens}}}'"
+
+
 
 def load_recipe(recipe_path: Path) -> dict[str, Any]:
     """
@@ -434,6 +459,8 @@ def generate_launch_script(
     is_solo: bool = False,
     extra_args: list[str] | None = None,
     use_ray: bool = False,
+    no_mtp: bool = False,
+    speculative_tokens: int | None = None,
 ) -> str:
     """
     Generate a bash launch script from the recipe.
@@ -474,6 +501,8 @@ def generate_launch_script(
         is_solo: If True, generate a single-node launch script
         extra_args: Additional arguments to append to vLLM command (after --)
         use_ray: If True, preserve/add Ray distributed executor configuration
+        no_mtp: If True, strip speculative decoding configuration
+        speculative_tokens: If set, override num_speculative_tokens (or strip if <= 0)
 
     Returns:
         Complete bash script content as string
@@ -520,6 +549,15 @@ def generate_launch_script(
         command = strip_distributed_executor_backend(command)
     else:
         command = ensure_ray_backend(command)
+
+    # Handle MTP / speculative config flags
+    if no_mtp:
+        command = strip_speculative_config(command)
+    elif speculative_tokens is not None:
+        if speculative_tokens <= 0:
+            command = strip_speculative_config(command)
+        else:
+            command = update_speculative_tokens(command, speculative_tokens)
 
     lines.append("# Run the model")
     lines.append(command.strip())
@@ -773,6 +811,20 @@ Examples:
         type=int,
         dest="max_model_len",
         help="Override max model length",
+    )
+    override_group.add_argument(
+        "--no-mtp",
+        "--no-speculative",
+        action="store_true",
+        dest="no_mtp",
+        help="Disable MTP speculative decoding",
+    )
+    override_group.add_argument(
+        "--speculative-tokens",
+        "--mtp-tokens",
+        type=int,
+        dest="speculative_tokens",
+        help="Override number of MTP speculative tokens (default from recipe: 4)",
     )
 
     # Launch options (passed to launch-cluster.sh)
@@ -1298,6 +1350,8 @@ Examples:
         is_solo=is_solo,
         extra_args=extra_args,
         use_ray=use_ray,
+        no_mtp=args.no_mtp,
+        speculative_tokens=args.speculative_tokens,
     )
 
     if args.dry_run:

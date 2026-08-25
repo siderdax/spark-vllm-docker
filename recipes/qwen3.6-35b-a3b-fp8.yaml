@@ -65,6 +65,7 @@ command: |
     --load-format fastsafetensors \
     --attention-backend flashinfer \
     --enable-prefix-caching \
+    --speculative-config '{{"method":"mtp","num_speculative_tokens":4,"moe_backend":"triton"}}' \
     --chat-template fixed_chat_template.jinja \
     -tp {tensor_parallel} \
     --distributed-executor-backend ray
