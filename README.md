@@ -146,6 +146,19 @@ For periodic maintenance, I recommend using a filter: `docker builder prune --fi
 
 ## CHANGELOG
 
+### 2026-08-26
+
+#### MTP speculative decoding enabled by default on Qwen3.6/3.8
+
+Benchmarked Qwen3.8-27B-FP8 speculative decoding on raven+quaker (see `qwen3.8-mtp-optimization-report.md`) across MTP token counts and against the NVFP4 variant. Official FP8 + MTP 4 won outright — `21.2-22.0 tok/s` vs `12.5 tok/s` with MTP off (+70-76%), and vs `19.8 tok/s` for NVFP4 + MTP 4 despite NVFP4 being faster with MTP off. The gap comes from draft-acceptance rate: the MTP draft head was trained on clean FP8/BF16 hidden states, so NVFP4's quantization noise drops its 4th-token hit rate to 18-28% vs FP8's 31-37% — at MTP 4 that acceptance rate dominates over the raw weight-read savings NVFP4 gets with MTP off.
+
+Added `--speculative-config '{"method":"mtp","num_speculative_tokens":4}'` to `qwen3.6-27b-fp8`, `qwen3.6-27b-nvfp4`, `qwen3.6-35b-a3b-fp8`, and `qwen3.8-27b-fp8` (bumped `qwen3.6-35b-a3b-nvfp4` from 3 to 4). Also added `--no-mtp`/`--speculative-tokens` overrides to `run-recipe.py` so individual launches can disable or retune it without editing the recipe:
+
+```bash
+./run-qwen3.8-27b.sh --no-mtp
+./run-qwen3.8-27b.sh --speculative-tokens 3
+```
+
 ### 2026-08-20
 
 #### Qwen3.6: thinking-mode sampling defaults across all 6 recipes
@@ -198,6 +211,16 @@ quaker are separate GB10 chips with their own bandwidth-limited local memory con
 step off one chip's memory) gets roughly halved by splitting across two independent memory pools,
 and the direct-link network tax doesn't come close to offsetting that. tp2 stays the recipe
 default; MTP speculative decoding remains untested.
+
+#### DeepSeek-V4-Flash: agentic top_p + max reasoning_effort
+
+Neither `deepseek-v4-flash` nor `deepseek-v4-flash-0731` set `--override-generation-config`, so `top_p` was silently falling back to vLLM's non-agentic default of `1.0` instead of the official recipe/model-card's recommended `0.95` for agentic scenarios (`temperature=1.0` already matched vLLM's default). Added `--override-generation-config '{"temperature": 1.0, "top_p": 0.95}'` to both. Also bumped `-0731`'s `reasoning_effort` from `high` to `max` to match.
+
+### 2026-08-19
+
+#### Qwen3.8-27B-FP8 recipe with chat-template fix and launch wrappers
+
+Added `recipes/qwen3.8-27b-fp8.yaml`, porting the same chat-template robustness fixes used for Qwen3.6 (`mods/fix-qwen3.8-chat-template`) onto Qwen3.8's actual template — no developer-role support, tool-call argument handling on non-mapping args, no auto-close for a dangling `<think>` before a `<tool_call>` — while preserving Qwen3.8's `reasoning_effort` (xhigh/medium/low) system-prompt injection that the plain Qwen3.6 fix doesn't have. Also added `run-qwen3.8-27b.sh`/`-solo`/`-pp2` launch wrappers mirroring the existing raven+quaker pattern.
 
 ### 2026-08-14
 
