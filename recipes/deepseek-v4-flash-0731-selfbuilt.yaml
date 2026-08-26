@@ -16,7 +16,13 @@
 #   the mod (total model load 63.2s vs 50.9s, +24%). InstantTensor's sequential
 #   GPU-streaming pass over the 155GB checkpoint is already fast enough (~20s)
 #   that the mod's lazy-safetensors random-access path for the tiny 97-param
-#   DSpark draft head didn't pay off here.
+#   DSpark draft head didn't pay off here. Root cause (see README CHANGELOG
+#   2026-08-26 for sources): InstantTensor's Direct I/O + prefetch pipeline is
+#   already close to DGX Spark's NVMe sequential-read ceiling (~7.5-8 GB/s
+#   measured here), while the mod's fallback is the standard mmap-based lazy
+#   safetensors loader — which resolves each accessed tensor as its own
+#   scattered page-fault, so a handful of small params spread across shards
+#   can cost more in random-read overhead than just re-streaming everything.
 # Conclusion: recipes/deepseek-v4-flash-0731.yaml (no mod, tuned defaults,
 # --override-generation-config, reasoning_effort=max) stays the active recipe.
 # Re-benchmark this file if upstream changes the mod or the b12x image
