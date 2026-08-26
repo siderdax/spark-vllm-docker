@@ -40,6 +40,18 @@ For the full project history before this fork diverged, see the [original reposi
 
 ### 2026-08-26
 
+#### Merged upstream `main` (8 months of drift); kept our DeepSeek-V4-Flash-0731 recipe over upstream's
+
+Local `main` had fallen 61 commits behind `origin/main` (eugr/spark-vllm-docker), which had independently diverged by 40k+ lines while this fork's `local-tuning` branch grew alongside it. Fast-forwarded local `main` to the current fork remote, then merged it into `local-tuning`. Only 3 files actually conflicted: `.gitignore` (trivial union), `README.md` (kept ours — this file was just rewritten to be fork-specific), and `recipes/deepseek-v4-flash-0731.yaml`, where upstream had independently built its own version of the same recipe.
+
+Benchmarked both on raven+quaker (TP2) before resolving that conflict:
+
+- **Image freshness**: our locally-cached `eugr/spark-vllm-b12x:latest` was from 2026-08-13; re-pulling picked up a newer build. Same recipe, same everything else — just the refreshed image gave `pp2048` 2014→2150 t/s (+6.7%) and `tg256` 40.7→42.2 t/s (+3.6%, peak +11%). Worth periodically re-pulling regardless of which recipe wins.
+- **Upstream's recipe** uses `container: vllm-node-b12x`, which turned out to resolve to the exact same `eugr/spark-vllm-b12x:latest` image (`build-and-copy.sh --exp-b12x` only triggers a real source compile if combined with `--rebuild-vllm`; alone it just pulls-and-retags) — so no actual image difference to benchmark.
+- The one real difference, `mods/instanttensor-hybrid-draft-loader` (upstream-only, switches the DSpark draft head to lazy-safetensors loading instead of a second InstantTensor pass), made loading *slower* on our setup: DSpark draft load went 20.05s → 30.58s (total model load 50.9s → 63.2s, +24%). InstantTensor's sequential GPU-streaming pass over the 155GB checkpoint is already fast enough that the mod's random-access path for the tiny 97-param draft head didn't pay off here.
+
+Kept `recipes/deepseek-v4-flash-0731.yaml` as our version (no mod, tuned defaults, `--override-generation-config`, `reasoning_effort=max`). Preserved upstream's version as `recipes/deepseek-v4-flash-0731-selfbuilt.yaml` for reference, in case a future upstream image/mod change is worth re-testing — it's not wired into any `run-*.sh` wrapper.
+
 #### MTP speculative decoding enabled by default on Qwen3.6/3.8
 
 Benchmarked Qwen3.8-27B-FP8 speculative decoding on raven+quaker (see `qwen3.8-mtp-optimization-report.md`) across MTP token counts and against the NVFP4 variant. Official FP8 + MTP 4 won outright — `21.2-22.0 tok/s` vs `12.5 tok/s` with MTP off (+70-76%), and vs `19.8 tok/s` for NVFP4 + MTP 4 despite NVFP4 being faster with MTP off. The gap comes from draft-acceptance rate: the MTP draft head was trained on clean FP8/BF16 hidden states, so NVFP4's quantization noise drops its 4th-token hit rate to 18-28% vs FP8's 31-37% — at MTP 4 that acceptance rate dominates over the raw weight-read savings NVFP4 gets with MTP off.

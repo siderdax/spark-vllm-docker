@@ -3,3 +3,4 @@ build-metadata.yaml
 .DS_STORE
 api_key.txt
 context-bench-results.json
+.wheel-cache/
