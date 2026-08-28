@@ -1,0 +1,56 @@
+# Recipe: Qwen3.8-Flash-Next-NVFP4 (MTP-3 Default)
+# Official vLLM Recipe: https://recipes.vllm.ai/Qwen/Qwen3.8-Flash-Next.json
+# Quantization: Inferact/Qwen3.8-Flash-Next-NVFP4 (~170 GiB) on 2x DGX Spark (TP2)
+
+recipe_version: "1"
+name: Qwen3.8-Flash-Next-NVFP4
+description: vLLM serving Inferact/Qwen3.8-Flash-Next-NVFP4 on 2x DGX Spark (TP2) with MTP-3
+
+# HuggingFace model
+model: Inferact/Qwen3.8-Flash-Next-NVFP4
+
+# Cluster configuration
+cluster_only: true
+solo_only: false
+
+# Container image
+container: vllm-node
+
+mods: []
+
+# Default settings
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  tensor_parallel: 2
+  gpu_memory_utilization: 0.90
+  max_model_len: 131072
+  max_num_batched_tokens: 4096
+  max_num_seqs: 256
+  served_model_name: qwen3.8-flash-next
+
+# Environment variables
+env:
+  VLLM_ENGINE_READY_TIMEOUT_S: "3600"
+  HF_HUB_OFFLINE: "1"
+  TRANSFORMERS_OFFLINE: "1"
+
+# The vLLM serve command template
+command: |
+  vllm serve Inferact/Qwen3.8-Flash-Next-NVFP4 \
+    --host {host} \
+    --port {port} \
+    --served-model-name {served_model_name} \
+    --max-model-len {max_model_len} \
+    --max-num-batched-tokens {max_num_batched_tokens} \
+    --max-num-seqs {max_num_seqs} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --trust-remote-code \
+    --enable-prefix-caching \
+    --no-enable-flashinfer-autotune \
+    --enable-auto-tool-choice \
+    --tool-call-parser qwen3_xml \
+    --reasoning-parser qwen3 \
+    --speculative-config '{{"method":"mtp","num_speculative_tokens":3}}' \
+    -tp {tensor_parallel} \
+    --distributed-executor-backend ray

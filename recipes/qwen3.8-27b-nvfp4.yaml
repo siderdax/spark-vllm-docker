@@ -1,0 +1,54 @@
+# Recipe: Qwen3.8-27B-NVFP4 (MTP-3 Default)
+# Official vLLM Recipe: https://recipes.vllm.ai/Qwen/Qwen3.8-27B?variant=nvfp4
+# Model: Inferact/Qwen3.8-27B-NVFP4 (~24.6 GiB) - NVFP4 build for NVIDIA Blackwell
+
+recipe_version: "1"
+name: Qwen3.8-27B-NVFP4
+description: vLLM serving Inferact/Qwen3.8-27B-NVFP4 on DGX Spark (tp2) with MTP-3
+
+# HuggingFace model
+model: Inferact/Qwen3.8-27B-NVFP4
+
+# Container image
+container: vllm-node
+
+mods:
+  - mods/fix-qwen3.8-chat-template
+
+# Default settings
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  tensor_parallel: 2
+  gpu_memory_utilization: 0.85
+  max_model_len: 131072
+  max_num_batched_tokens: 4096
+  max_num_seqs: 64
+  served_model_name: qwen3.8-27b
+
+# Environment variables
+env:
+  VLLM_ENGINE_READY_TIMEOUT_S: "3600"
+  HF_HUB_OFFLINE: "1"
+  TRANSFORMERS_OFFLINE: "1"
+
+# The vLLM serve command template
+command: |
+  vllm serve Inferact/Qwen3.8-27B-NVFP4 \
+    --host {host} \
+    --port {port} \
+    --served-model-name {served_model_name} \
+    --max-model-len {max_model_len} \
+    --max-num-batched-tokens {max_num_batched_tokens} \
+    --max-num-seqs {max_num_seqs} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --trust-remote-code \
+    --enable-prefix-caching \
+    --enable-auto-tool-choice \
+    --tool-call-parser qwen3_xml \
+    --reasoning-parser qwen3 \
+    --override-generation-config '{{"temperature": 1.0, "top_p": 0.95, "top_k": 20}}' \
+    --speculative-config '{{"method":"mtp","num_speculative_tokens":3}}' \
+    --chat-template fixed_chat_template.jinja \
+    -tp {tensor_parallel} \
+    --distributed-executor-backend ray
