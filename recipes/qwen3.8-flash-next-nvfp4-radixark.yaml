@@ -1,0 +1,105 @@
+# Recipe: Qwen3.8-Flash-Next-NVFP4 (RadixArk), MTP-4, TP2
+#
+# Second attempt at this model on raven+quaker. The first (recipes/qwen3.8-flash-next-nvfp4.yaml,
+# deleted 2026-08-28, see project memory qwen38-flash-next-oom-blocker) used
+# Inferact/Qwen3.8-Flash-Next-NVFP4 (182.78GB, ~91GiB/rank on TP2) and OOM-killed the
+# worker on load -- once even froze raven hard enough to need a physical reboot. Root
+# cause: GB10's unified-memory pool has no separate VRAM, and vLLM's auto-prefetch
+# loading path (which would stream weights instead of staging them through host RAM)
+# is disabled for local EXT4 (only NFS/Lustre). A warm page cache from a prior load
+# can also starve the GPU allocator mid-load on top of that.
+#
+# This attempt switches to RadixArk/Qwen3.8-Flash-Next-NVFP4 (135.2GB, ~61.7GiB/rank --
+# much more headroom under the ~121GiB/node ceiling) and adds the mitigations from
+# github.com/x00byte/Qwen3.8-Flash-Dual-Spark-Recipe, a community recipe that actually
+# got this running on TP2 GB10 with the exact same vLLM build we have
+# (vllm/vllm-openai:qwen38-flash-next, 0.1.dev20073+g8e685d198), scoring 91/100 on
+# tool-eval-bench:
+#   - mods/drop-caches: drop page cache before load (their fix #5 -- "warm page cache
+#     starved the GPU allocator mid-load"), independently the same mechanism our own
+#     project memory already flagged as Gotcha 1.
+#   - --enforce-eager: their fix #1 -- disabling this triggered a CUDA graph/torch.compile
+#     path that froze their DGX Spark the same way ours froze once. Do not remove this.
+#   - --gpu-memory-utilization 0.85 (not the original recipe's 0.90, which is what
+#     OOM-killed us the first time).
+#   - No --distributed-executor-backend ray -- the original recipe forced Ray; x00byte's
+#     working config uses plain mp/external-launcher instead. launch-cluster.sh already
+#     defaults to this (no --ray flag needed), so just don't force ray here.
+#
+# mods/qwen38-flash-next-ple-fp8-fix: RadixArk's checkpoint is hybrid -- routed experts
+# are ModelOpt NVFP4, but the PLE n-gram embedding table ships as FP8 shards with a
+# single global weight_scale (config.json: "ple_embedding_dtype": "float8_e4m3fn",
+# verified present in this exact checkpoint). Stock vLLM's ple_layer.py only enables
+# its FP8 PLE path when the outer quant config is Fp8Config; here it's modelopt, so it
+# silently upcasts to bf16 with no scale applied (wrong embeddings, no crash) --
+# and once that's fixed, a second bug surfaces (weight_scale double-registered as both
+# parameter and buffer). This mod replaces ple_layer.py with x00byte's fix, diffed
+# clean (~12 lines) against our own pulled image's stock file before adoption.
+#
+# mods/fix-qwen3.8-chat-template: RadixArk ships the same pre-fix Qwen3.8 template
+# (169 lines) our project memory already flagged -- diffed against it directly to
+# confirm (missing developer-role support, think_on/think_off pre-scan gating, etc.).
+#
+# Deviation from x00byte's exact command: using --tool-call-parser qwen3_xml (not
+# qwen3_coder) -- qwen3_coder has a known vLLM bug producing an infinite "!" stream
+# on long inputs containing a tool call (vllm-project/vllm#39056), affecting the whole
+# Qwen3 family. This repo's other Qwen3.6/3.8 recipes all use qwen3_xml for the same
+# reason.
+
+recipe_version: "1"
+name: Qwen3.8-Flash-Next-NVFP4-RadixArk
+description: vLLM serving RadixArk/Qwen3.8-Flash-Next-NVFP4 on 2x DGX Spark (TP2) with MTP-4
+
+# HuggingFace model
+model: RadixArk/Qwen3.8-Flash-Next-NVFP4
+
+cluster_only: true
+solo_only: false
+
+# Official per-model image (same build x00byte validated this against)
+container: vllm/vllm-openai:qwen38-flash-next
+
+mods:
+  - mods/drop-caches
+  - mods/qwen38-flash-next-ple-fp8-fix
+  - mods/fix-qwen3.8-chat-template
+
+# Default settings
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  tensor_parallel: 2
+  gpu_memory_utilization: 0.85
+  max_model_len: 262144
+  max_num_batched_tokens: 8192
+  max_num_seqs: 8
+  served_model_name: qwen3.8-flash-next
+
+# Environment variables
+env:
+  VLLM_ENGINE_READY_TIMEOUT_S: "3600"
+  HF_HUB_OFFLINE: "1"
+  TRANSFORMERS_OFFLINE: "1"
+
+# The vLLM serve command template
+command: |
+  vllm serve RadixArk/Qwen3.8-Flash-Next-NVFP4 \
+    --host {host} \
+    --port {port} \
+    --served-model-name {served_model_name} \
+    --quantization modelopt_fp4 \
+    --max-model-len {max_model_len} \
+    --max-num-batched-tokens {max_num_batched_tokens} \
+    --max-num-seqs {max_num_seqs} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --trust-remote-code \
+    --enforce-eager \
+    --enable-chunked-prefill \
+    --enable-prefix-caching \
+    --no-enable-flashinfer-autotune \
+    --enable-auto-tool-choice \
+    --tool-call-parser qwen3_xml \
+    --reasoning-parser qwen3 \
+    --chat-template fixed_chat_template.jinja \
+    --speculative-config '{{"method":"mtp","num_speculative_tokens":4}}' \
+    -tp {tensor_parallel}

@@ -1,13 +1,23 @@
 # Recipe: Qwen3.8-27B-NVFP4 (MTP-3 Default)
-# Official vLLM Recipe: https://recipes.vllm.ai/Qwen/Qwen3.8-27B?variant=nvfp4
-# Model: Inferact/Qwen3.8-27B-NVFP4 (~24.6 GiB) - NVFP4 build for NVIDIA Blackwell
+# Model: unsloth/Qwen3.8-27B-NVFP4 (23.42 GiB), "Unsloth Dynamic V3.0" quant --
+# mixed-precision (attention + lm_head at 8-bit, MLP at 4-bit), 1.8M downloads.
+# Switched from Inferact/Qwen3.8-27B-NVFP4 2026-08-29 after a 3-way bench
+# (Inferact/RadixArk/unsloth, see project memory quant-source-quality-heuristic):
+# Inferact was slowest (24.0 t/s decode) with no published quant methodology or
+# eval data and uniform 4-bit quantization including attention -- retired
+# entirely, no longer cached anywhere. RadixArk was fastest (35.3 t/s) and has
+# published audited GSM8K/AIME26 scores, but this recipe picked unsloth as the
+# steady middle ground (23.42GB, between Inferact's 26.38GB and RadixArk's
+# 21.92GB; 30.25 t/s decode). RadixArk's checkpoint+recipe were retired after
+# the bench (not kept on standby) -- backed up at fregata if ever needed again,
+# see project memory quant-source-quality-heuristic.
 
 recipe_version: "1"
 name: Qwen3.8-27B-NVFP4
-description: vLLM serving Inferact/Qwen3.8-27B-NVFP4 on DGX Spark (tp2) with MTP-3
+description: vLLM serving unsloth/Qwen3.8-27B-NVFP4 on DGX Spark (tp2) with MTP-3
 
 # HuggingFace model
-model: Inferact/Qwen3.8-27B-NVFP4
+model: unsloth/Qwen3.8-27B-NVFP4
 
 # Container image
 container: vllm-node
@@ -34,7 +44,7 @@ env:
 
 # The vLLM serve command template
 command: |
-  vllm serve Inferact/Qwen3.8-27B-NVFP4 \
+  vllm serve unsloth/Qwen3.8-27B-NVFP4 \
     --host {host} \
     --port {port} \
     --served-model-name {served_model_name} \
