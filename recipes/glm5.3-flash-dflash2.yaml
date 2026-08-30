@@ -1,5 +1,18 @@
 # Recipe: GLM-5.3-Flash-NVFP4 + DFlash2 speculative decoding, TP2 on 2x DGX Spark (GB10/SM121)
 #
+# max_model_len 262144 -> 524288 (2026-08-30): upstream's docs/KV-HUNT-672K-TP2-RECORD.md
+# documents a TP2 fp8-KV ceiling hunt on this exact hardware -- a "normal" wall around
+# 507K tokens at --kv-cache-memory 4445787956 (4.14GiB/rank), extendable to a hunted
+# record of 672,606 tokens at 5.5GiB/rank with extra rituals (local weights both ranks,
+# drop_caches immediately before launch, a background cache-flusher loop). Above ~6GiB/rank
+# the KV reservation can report success while NVRM's physical backing silently fails --
+# the worker then dies with no error on first real touch during warmup ("phantom reserve").
+# 524288 sits right at their proven-safe 507K wall, using their exact kv-cache-memory value
+# rather than naively linear-scaling from our 262144 baseline (which would land ~6GiB,
+# in the risky zone). MANDATORY before every launch at this size: drop_caches on both
+# nodes (see run-glm5.3-flash-dflash2.sh) -- their doc traces one production crash directly
+# to skipping this on a dirty node.
+#
 # Adapted from tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark
 # (launch-glm53-vllm-tp2-dflash2.sh), reporting 46.9 tok/s on this exact
 # hardware. Uses their pre-built, already-patched image instead of our own
@@ -60,7 +73,7 @@ defaults:
   host: 0.0.0.0
   tensor_parallel: 2
   gpu_memory_utilization: 0.85
-  max_model_len: 262144
+  max_model_len: 524288
   max_num_seqs: 6
   served_model_name: glm-5.3-flash
 
@@ -104,7 +117,7 @@ command: |
     --moe-backend marlin \
     --speculative-config '{{"method":"dflash","model":"incoai/GLM-5.3-Flash-DFlash2","num_speculative_tokens":5}}' \
     --kv-cache-dtype fp8_e4m3 \
-    --kv-cache-memory 3221225472 \
+    --kv-cache-memory 4445787956 \
     --enforce-eager \
     --tool-call-parser glm47 \
     --enable-auto-tool-choice \

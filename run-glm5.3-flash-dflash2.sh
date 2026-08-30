@@ -13,6 +13,15 @@
 #   - ~/patches/sparse_attn_indexer_kpool.py present on BOTH nodes
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+# Mandatory before every launch at large context (see recipe header /
+# upstream docs/KV-HUNT-672K-TP2-RECORD.md): a dirty page cache on either
+# node has been directly traced to a production crash on first real prefill
+# after boot. No passwordless sudo here, so do it via a throwaway privileged
+# container instead of `sudo tee /proc/sys/vm/drop_caches`.
+echo "Dropping page cache on both nodes before launch..."
+docker run --rm --privileged --pid=host alpine sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches' && echo "  raven: OK"
+ssh quaker.local "docker run --rm --privileged --pid=host alpine sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'" && echo "  quaker: OK"
+
 # Same "recipe env: doesn't reach workers" gotcha as run-glm5.3-flash.sh --
 # every var here must be passed as a container-level -e to reach both nodes.
 # --volume: bind-mounts the SM121 top-k fix over the image's stock kernel
