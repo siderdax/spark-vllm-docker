@@ -1,0 +1,113 @@
+# Recipe: GLM-5.3-Flash-NVFP4 + DFlash2 speculative decoding, TP2 on 2x DGX Spark (GB10/SM121)
+#
+# Adapted from tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark
+# (launch-glm53-vllm-tp2-dflash2.sh), reporting 46.9 tok/s on this exact
+# hardware. Uses their pre-built, already-patched image instead of our own
+# mods/glm53-flash-sm121 runtime-patching -- see project memory
+# glm53-flash-sm120-blocker for why: that mod reinstalls FlashInfer nightly
+# via `docker exec` on every launch, which repeatedly invalidates ninja's
+# JIT-kernel dependency cache (fresh mtimes each launch) and forced a
+# rebuild every single time even with the cache fully warm. This image
+# bakes every patch (SM90->SM121 NoPE MLA backend, PDL gate, top-k indexer
+# hardening, fp8 KV cache, DFlash2 itself) into the image at `docker build`
+# time instead, so nothing gets reinstalled/rewritten at container-launch
+# time and the JIT cache stays valid across restarts.
+#
+# Model: RedHatAI/GLM-5.3-Flash-NVFP4 (compressed-tensors NVFP4), NOT
+# LibertAIDAI's ModelOpt NVFP4 -- the latter has a confirmed intermittent
+# token-corruption bug (vLLM issue #54150; reproduced 4/9/8 corrupted-token
+# runs out of 3 vs 0/0/0 for RedHatAI on this exact repo's probe). Loads
+# faster too (11 large shards vs 120 small).
+#
+# Prerequisites (both nodes):
+#   1. docker pull ghcr.io/tonyd2wild/vllm-glm53-flash:sm121-v11-dflash2
+#      docker tag ghcr.io/tonyd2wild/vllm-glm53-flash:sm121-v11-dflash2 \
+#        radixark/vllm-glm53-flash:sm121-v11-dflash2
+#   2. RedHatAI/GLM-5.3-Flash-NVFP4 and incoai/GLM-5.3-Flash-DFlash2 (2.2GB
+#      drafter) in the normal HF cache (~/.cache/huggingface/hub/), same as
+#      every other recipe here -- NOT the flat /var/tmp bind-mount path the
+#      upstream launcher uses.
+#   3. ~/patches/sparse_attn_indexer_kpool.py present on BOTH nodes (copy of
+#      patches/sparse_attn_indexer_kpool_sm121.py in this repo). Both
+#      published images still ship a decode-time top-k kernel that hard-kills
+#      the engine past ~24K context on GB10 without this bind-mounted fix
+#      (see the upstream repo's docs/SM121-CRASH-FORENSICS-2026-08-27.md).
+#
+# NOT using --distributed-executor-backend/--nnodes/--node-rank/--master-addr/
+# --headless here -- launch-cluster.sh adds those automatically. Likewise
+# most of upstream's manual NCCL interface env vars (NCCL_SOCKET_IFNAME,
+# NCCL_IB_HCA, GLOO_SOCKET_IFNAME, TP_SOCKET_IFNAME, MN_IF_NAME,
+# NCCL_IB_DISABLE, NCCL_IGNORE_CPU_AFFINITY) are already set by
+# launch-cluster.sh from .env's ETH_IF/IB_IF -- only the extras upstream
+# added beyond that baseline are passed explicitly (see run script).
+#
+# UNVERIFIED as of first write (2026-08-30): built from the upstream repo's
+# README/scripts, never launch-tested on raven+quaker.
+
+recipe_version: "1"
+name: GLM-5.3-Flash-DFlash2
+description: vLLM serving RedHatAI/GLM-5.3-Flash-NVFP4 + DFlash2 spec decode on DGX Spark (tp2)
+
+model: RedHatAI/GLM-5.3-Flash-NVFP4
+
+container: radixark/vllm-glm53-flash:sm121-v11-dflash2
+
+mods:
+  - mods/glm53-flash-dflash2-chat-template
+
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  tensor_parallel: 2
+  gpu_memory_utilization: 0.85
+  max_model_len: 262144
+  max_num_seqs: 6
+  served_model_name: glm-5.3-flash
+
+env:
+  # NOTE: this recipe-level env: block does NOT reach worker nodes in
+  # cluster mode (confirmed live 2026-08-29 debugging mods/glm53-flash-sm121
+  # -- see project memory glm53-flash-sm120-blocker). Kept here only as
+  # documentation; the real source of truth is the --env flags in
+  # run-glm5.3-flash-dflash2.sh.
+  HF_HUB_OFFLINE: 1
+  TRANSFORMERS_OFFLINE: 1
+  VLLM_ENGINE_READY_TIMEOUT_S: 3600
+  PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
+  TORCH_CUDA_ARCH_LIST: "12.1a"
+  FLASHINFER_CUDA_ARCH_LIST: "12.1a"
+  FLASHINFER_DISABLE_VERSION_CHECK: 1
+  # NCCL tuning beyond launch-cluster.sh's own IB/ethernet defaults --
+  # verbatim from upstream's launch-glm53-vllm-tp2-dflash2.sh.
+  NCCL_NET: IB
+  NCCL_IB_GID_INDEX: 3
+  NCCL_IB_ROCE_VERSION_NUM: 2
+  NCCL_IB_ADDR_FAMILY: AF_INET
+  NCCL_IB_ADDR_RANGE: "192.168.10.0/24"
+  NCCL_NVLS_ENABLE: 0
+  NCCL_CROSS_NIC: 0
+  NCCL_IB_MERGE_NICS: 0
+  NCCL_CUMEM_ENABLE: 0
+  TORCH_NCCL_ASYNC_ERROR_HANDLING: 1
+
+command: |
+  vllm serve RedHatAI/GLM-5.3-Flash-NVFP4 \
+    --served-model-name {served_model_name} \
+    --host {host} \
+    --port {port} \
+    --trust-remote-code \
+    -tp {tensor_parallel} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --max-model-len {max_model_len} \
+    --max-num-seqs {max_num_seqs} \
+    --block-size 2304 \
+    --moe-backend marlin \
+    --speculative-config '{{"method":"dflash","model":"incoai/GLM-5.3-Flash-DFlash2","num_speculative_tokens":5}}' \
+    --kv-cache-dtype fp8_e4m3 \
+    --kv-cache-memory 3221225472 \
+    --enforce-eager \
+    --tool-call-parser glm47 \
+    --enable-auto-tool-choice \
+    --reasoning-parser glm45 \
+    --default-chat-template-kwargs '{{"enable_thinking":false}}' \
+    --chat-template fixed_chat_template_mm.jinja

@@ -221,4 +221,54 @@ else:
     print("[v7] kpool_compress.py: pool-length bounds clamp applied")
 PY
 
+echo "[glm53-flash-sm121] v8: fixing missing nvrtc.h for FlashInfer's DeepGEMM JIT setup compile"
+# The nightly FlashInfer's cutlass_backend/deepgemm_jit_setup.cu (pulled in by
+# mod v3) #includes <nvrtc.h>, but the container only ships the *runtime*
+# nvrtc apt package (cuda-nvrtc-13-0), not the -dev package with the header --
+# so JIT-compiling the fused-MoE kernels fails with "nvrtc.h: No such file or
+# directory" (hit and diagnosed live 2026-08-29, full nvcc log confirmed this
+# was the actual root cause behind an earlier misdiagnosed "ninja build
+# stopped" failure). The header does exist though, bundled inside the
+# nvidia-cuda-nvrtc pip wheel's own include dir -- just not on nvcc's -I path.
+# Symlink it into the CUDA toolkit's include dir instead of apt-installing the
+# -dev package, since quaker (the worker node) has no internet access.
+if [ -f /usr/local/cuda/include/nvrtc.h ]; then
+  echo "[v8] nvrtc.h already present in /usr/local/cuda/include, skipping"
+else
+  NVRTC_H="$(find "$PYTHON_ROOT/nvidia" -maxdepth 3 -path '*/include/nvrtc.h' 2>/dev/null | head -1)"
+  if [ -z "$NVRTC_H" ]; then
+    echo "[v8] nvrtc.h not found anywhere under $PYTHON_ROOT/nvidia; refusing to patch" >&2
+    exit 1
+  fi
+  ln -s "$NVRTC_H" /usr/local/cuda/include/nvrtc.h
+  echo "[v8] symlinked $NVRTC_H -> /usr/local/cuda/include/nvrtc.h"
+fi
+
+echo "[glm53-flash-sm121] v9: fixing missing libnvrtc.so for FlashInfer's fused-MoE link step"
+# This was the ACTUAL root cause behind every "cache looks warm but still
+# recompiles" failure seen 2026-08-29/30 (7+ launch attempts, two of which
+# OOM-killed the vLLM worker and once took tmux/dbus/pipewire down with it).
+# The final link of cached_ops/fused_moe_120/*.cuda.o into fused_moe_120.so
+# passes -lnvrtc, but the container only ships versioned libnvrtc.so.13 (no
+# unversioned dev symlink) -- so the link step fails with "cannot find
+# -lnvrtc" EVERY time, the .so is never produced, and FlashInfer's
+# try_load() (which only checks for a valid .so, not individual .cuda.o
+# files) always falls through to a full rebuild no matter how complete the
+# object-file cache is. v8's nvrtc.h fix got compilation working; this fixes
+# linking. Do NOT "fix" this by touching .cuda.o mtimes forward instead --
+# that actively breaks ninja's dep tracking (it stores each output's mtime
+# at record time and distrusts a touched file: "stored deps info out of
+# date"), which is worse than doing nothing.
+if [ -f /usr/local/cuda/lib64/libnvrtc.so ]; then
+  echo "[v9] libnvrtc.so already present in /usr/local/cuda/lib64, skipping"
+else
+  LIBNVRTC="$(find "$PYTHON_ROOT/nvidia" -maxdepth 3 -name 'libnvrtc.so.*' 2>/dev/null | head -1)"
+  if [ -z "$LIBNVRTC" ]; then
+    echo "[v9] libnvrtc.so.* not found anywhere under $PYTHON_ROOT/nvidia; refusing to patch" >&2
+    exit 1
+  fi
+  ln -s "$LIBNVRTC" /usr/local/cuda/lib64/libnvrtc.so
+  echo "[v9] symlinked $LIBNVRTC -> /usr/local/cuda/lib64/libnvrtc.so"
+fi
+
 echo "[glm53-flash-sm121] all patches applied successfully"
