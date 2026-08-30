@@ -25,6 +25,7 @@ These recipes and `run-*.sh` wrappers exist only in this fork (not upstream):
 | DeepSeek-V4-Flash | `recipes/deepseek-v4-flash.yaml` | `run-dsv4f.sh` |
 | DeepSeek-V4-Flash-0731 | `recipes/deepseek-v4-flash-0731.yaml` | `run-dsv4f-0731.sh` |
 | MiniMax-M2.7-NVFP4 | `recipes/minimax-m2.7-nvfp4.yaml` | `run-minimax-m2.7.sh` |
+| GLM-5.3-Flash-NVFP4 + DFlash2 | `recipes/glm5.3-flash-dflash2.yaml` | `run-glm5.3-flash-dflash2.sh` |
 
 ```bash
 ./run-qwen3.8-27b.sh          # tp2 cluster (raven+quaker), the recipe default
@@ -37,6 +38,58 @@ Every wrapper forwards extra args straight to `run-recipe.sh`/`run-recipe.py` (`
 ## CHANGELOG (fork-specific)
 
 For the full project history before this fork diverged, see the [original repository's CHANGELOG](https://github.com/eugr/spark-vllm-docker#changelog).
+
+### 2026-08-30
+
+#### GLM-5.3-Flash-NVFP4 + DFlash2 on raven+quaker (TP2) — adopted tonyd2wild's recipe
+
+Spent a full session first trying to run GLM-5.3-Flash ourselves via
+`mods/glm53-flash-sm121` (a runtime-patched stock image: extends
+`FLASHINFER_MLA_SPARSE_SM90`'s capability gate to SM120/121, since the
+stock SM120 sparse-MLA kernel hard-requires DeepSeek's `pe_dim=64` and
+this model's NoPE MLA has `qk_rope_head_dim=0`). Got the backend selection
+working, but hit a FlashInfer JIT-cache problem that survived 10 launch
+attempts (two of which OOM-killed the vLLM worker, one of which took
+`tmux`/`dbus`/`pipewire` down with it): the fused-MoE kernel's final link
+step needs `-lnvrtc`, the image only ships a versioned `libnvrtc.so.13`
+(no unversioned dev symlink), so the `.so` never gets produced and
+FlashInfer's cache check falls through to a full rebuild every single
+launch no matter how warm the object-file cache is — see
+`mods/glm53-flash-sm121/run.sh`'s v8/v9 comments for the full root-cause
+writeup.
+
+Rather than keep debugging that, switched to
+**[tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-DFlash2-2x-DGX-Spark)**
+(sibling repos: [base sm121 recipe](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-2x-DGX-Spark),
+[TP4/1M-context variant](https://github.com/tonyd2wild/GLM-5.3-Flash-NVFP4-1M-KV-4x-DGX-Spark)) —
+a from-scratch, independently-verified deploy report for this exact model
+on this exact hardware (seven day-0 bugs found and fixed, including the
+same NoPE-MLA backend gap we found ourselves). Its `sm121-v11-dflash2`
+image bakes every patch in at `docker build` time instead of on every
+container launch, which sidesteps our JIT-cache problem entirely — see
+`recipes/glm5.3-flash-dflash2.yaml`'s header for the detailed comparison.
+
+Also adopted their finding that **`LibertAIDAI/GLM-5.3-Flash-NVFP4`
+(ModelOpt NVFP4) has a confirmed intermittent token-corruption bug**
+([vllm-project/vllm#54150](https://github.com/vllm-project/vllm/issues/54150)) —
+reproduced 4/9/8 corrupted-token runs out of 3 vs 0/0/0 for
+`RedHatAI/GLM-5.3-Flash-NVFP4` (compressed-tensors) on their own probe.
+`recipes/glm5.3-flash-dflash2.yaml` uses the RedHatAI checkpoint as a
+result.
+
+`recipes/glm5.3-flash-dflash2.yaml` / `run-glm5.3-flash-dflash2.sh` are
+this fork's translation of their `launch-glm53-vllm-tp2-dflash2.sh` into
+our recipe/`launch-cluster.sh` system (their launcher is a raw two-step
+manual `docker run`, worker-then-head) — adapted our cluster IPs/HF-cache
+model loading in place of their flat bind-mount paths, and fixed one new
+issue in the process: `launch-cluster.sh`'s IB interface autodetection
+picks up both of raven+quaker's RoCE NICs from `.env`'s `IB_IF`, but the
+second one (`roceP2p1s0f0`) has no IP configured and fails
+`ncclCommInitRank` outright — pinned `NCCL_IB_HCA` to the single working
+device explicitly. Verified working end-to-end: server health check
+passes, sanity chat completion correct, `Avg Draft acceptance rate: 100.0%`
+observed live. `mods/glm53-flash-sm121` and `patches/`/`mods/` for it are
+kept in the repo for reference, not wired into the DFlash2 launch path.
 
 ### 2026-08-26
 
