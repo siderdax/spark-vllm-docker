@@ -115,7 +115,7 @@ command: |
     --max-num-seqs {max_num_seqs} \
     --block-size 2304 \
     --moe-backend marlin \
-    --speculative-config '{{"method":"dflash","model":"incoai/GLM-5.3-Flash-DFlash2","num_speculative_tokens":5}}' \
+    --speculative-config '{{"method":"dflash","model":"incoai/GLM-5.3-Flash-DFlash2","num_speculative_tokens":7}}' \
     --kv-cache-dtype fp8_e4m3 \
     --kv-cache-memory 4445787956 \
     --enforce-eager \
