@@ -1,0 +1,59 @@
+# Recipe: Qwen3.8-27B-FP8 + DFlash2 speculative decoding
+# Sibling of recipes/qwen3.8-27b-fp8.yaml (MTP-4 default) and
+# recipes/qwen3.8-27b-dflash2.yaml (NVFP4 + DFlash2), built for a 4-way
+# NVFP4/FP8 x MTP-5/DFlash2 comparison requested 2026-08-31. Draft model
+# is the same incoai/Qwen3.8-27B-DFlash2 used for the NVFP4 pairing --
+# it's distilled from the unquantized Qwen/Qwen3.8-27B base and doesn't
+# depend on the target checkpoint's quantization, same as
+# incoai/GLM-5.3-Flash-DFlash2 pairs with an NVFP4 GLM target. See
+# recipes/qwen3.8-27b-dflash2.yaml's header for why incoai (not the
+# z-lab mirror) was picked as the source.
+#
+# VERIFIED 2026-08-31: 9/9 context-bench.py quality passes. Decode 31.55 t/s
+# at pp2048, 28.25 t/s at pp16384 -- a big jump over the FP8+MTP-5 sibling
+# (18.9 t/s flat, recipes/qwen3.8-27b-fp8-mtp5.yaml) and roughly on par with
+# NVFP4+MTP-5, though still behind the overall winner,
+# recipes/qwen3.8-27b-dflash2.yaml (NVFP4+DFlash2, 36.62 t/s at pp16384).
+# See project memory qwen38-27b-dflash2-recipe for the full table.
+
+recipe_version: "1"
+name: Qwen3.8-27B-FP8-DFlash2
+description: vLLM serving Qwen/Qwen3.8-27B-FP8 (dense, tp2) with DFlash2 spec decode
+
+model: Qwen/Qwen3.8-27B-FP8
+
+container: vllm-node
+
+mods:
+  - mods/fix-qwen3.8-chat-template
+
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  tensor_parallel: 2
+  gpu_memory_utilization: 0.7
+  max_model_len: 262144
+
+env:
+  HF_HUB_OFFLINE: 1
+  TRANSFORMERS_OFFLINE: 1
+
+command: |
+  vllm serve Qwen/Qwen3.8-27B-FP8 \
+    --host {host} \
+    --port {port} \
+    --max-model-len {max_model_len} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --trust-remote-code \
+    --enable-auto-tool-choice \
+    --tool-call-parser qwen3_xml \
+    --reasoning-parser qwen3 \
+    --override-generation-config '{{"temperature": 1.0, "top_p": 0.95, "top_k": 20}}' \
+    --kv-cache-dtype fp8 \
+    --load-format fastsafetensors \
+    --attention-backend flashinfer \
+    --enable-prefix-caching \
+    --speculative-config '{{"method":"dflash","model":"incoai/Qwen3.8-27B-DFlash2","num_speculative_tokens":7}}' \
+    --chat-template fixed_chat_template.jinja \
+    -tp {tensor_parallel} \
+    --distributed-executor-backend ray

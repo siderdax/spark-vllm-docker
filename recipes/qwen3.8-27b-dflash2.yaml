@@ -1,0 +1,91 @@
+# Recipe: Qwen3.8-27B-NVFP4 + DFlash2 speculative decoding
+# Sibling of recipes/qwen3.8-27b-nvfp4.yaml (which uses Qwen's native MTP-3
+# draft head) for a direct speed/quality comparison -- same target checkpoint
+# (unsloth/Qwen3.8-27B-NVFP4, see that recipe's header for why it was picked
+# over Inferact/RadixArk), swapping the speculative method to DFlash2 (a
+# block-diffusion drafter that predicts a whole token block per pass, see
+# incoai's model card / the DFlash paper, ICML 2026).
+#
+# Draft model source: incoai/Qwen3.8-27B-DFlash2, not the z-lab mirror
+# (z-lab/Qwen3.8-27B-DFlash2, which its own README describes as a literal
+# mirror of the incoai repo -- identical weights). Picked incoai because:
+#   1. It's the first-party/originating org for DFlash2 itself (citation on
+#      both repos attributes the method to "Inco AI" 2026), not a re-host.
+#   2. It already has a proven track record in this exact repo/hardware --
+#      incoai/GLM-5.3-Flash-DFlash2 is verified working end-to-end at
+#      100.0% draft acceptance on raven+quaker, see
+#      recipes/glm5.3-flash-dflash2.yaml / project memory
+#      glm53-flash-sm120-blocker.
+#   z-lab is itself a legitimate, long-running lab (dozens of DFlash/PARO
+#   models since 2025-10, incl. z-lab/Qwen3.6-35B-A3B-DFlash already used in
+#   recipes/qwen3.6-35b-a3b-fp8-dflash.yaml) -- not a reliability concern,
+#   just redundant to prefer a mirror over the origin when both are equally
+#   available. See project memory quant-source-quality-heuristic.
+#
+# --num_speculative_tokens 7: matches incoai's own documented vLLM launch
+# example (block size 7 for vLLM's dflash method; SGLang's example uses 8)
+# and the value already verified working for GLM-5.3-Flash-DFlash2.
+#
+# Unlike GLM-5.3-Flash, Qwen3.8-27B is a plain dense model (no sparse-MLA,
+# no MoE) -- no special container/kernel patches needed, just the standard
+# vllm-node image and the existing mods/fix-qwen3.8-chat-template.
+#
+# VERIFIED 2026-08-31: launch-tested on raven+quaker, 9/9 context-bench.py
+# quality passes (8K/32K/100K tokens x 3 depths). Winner of a 4-way
+# NVFP4/FP8 x MTP-5/DFlash2 comparison -- decode 31.90 t/s at pp2048,
+# 36.62 t/s at pp16384 (llama-benchy --pp 2048,16384 --tg 256 --exact-tg
+# --runs 3), best of all four. See recipes/qwen3.8-27b-nvfp4-mtp5.yaml,
+# recipes/qwen3.8-27b-fp8-mtp5.yaml, recipes/qwen3.8-27b-fp8-dflash2.yaml
+# for the siblings and project memory qwen38-27b-dflash2-recipe for the
+# full table. Recommended default for this model going forward.
+
+recipe_version: "1"
+name: Qwen3.8-27B-DFlash2
+description: vLLM serving unsloth/Qwen3.8-27B-NVFP4 on DGX Spark (tp2) with DFlash2 spec decode
+
+# HuggingFace model
+model: unsloth/Qwen3.8-27B-NVFP4
+
+# Container image
+container: vllm-node
+
+mods:
+  - mods/fix-qwen3.8-chat-template
+
+# Default settings
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  tensor_parallel: 2
+  gpu_memory_utilization: 0.85
+  max_model_len: 131072
+  max_num_batched_tokens: 4096
+  max_num_seqs: 64
+  served_model_name: qwen3.8-27b
+
+# Environment variables
+env:
+  VLLM_ENGINE_READY_TIMEOUT_S: "3600"
+  HF_HUB_OFFLINE: "1"
+  TRANSFORMERS_OFFLINE: "1"
+
+# The vLLM serve command template
+command: |
+  vllm serve unsloth/Qwen3.8-27B-NVFP4 \
+    --host {host} \
+    --port {port} \
+    --served-model-name {served_model_name} \
+    --max-model-len {max_model_len} \
+    --max-num-batched-tokens {max_num_batched_tokens} \
+    --max-num-seqs {max_num_seqs} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --trust-remote-code \
+    --enable-prefix-caching \
+    --enable-auto-tool-choice \
+    --tool-call-parser qwen3_xml \
+    --reasoning-parser qwen3 \
+    --override-generation-config '{{"temperature": 1.0, "top_p": 0.95, "top_k": 20}}' \
+    --speculative-config '{{"method":"dflash","model":"incoai/Qwen3.8-27B-DFlash2","num_speculative_tokens":7}}' \
+    --chat-template fixed_chat_template.jinja \
+    -tp {tensor_parallel} \
+    --distributed-executor-backend ray

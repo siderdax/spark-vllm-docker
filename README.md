@@ -20,7 +20,7 @@ These recipes and `run-*.sh` wrappers exist only in this fork (not upstream):
 | Qwen3.6-27B-FP8 | `recipes/qwen3.6-27b-fp8.yaml` | `run-qwen3.6-27b.sh` / `-solo` / `-pp2` |
 | Qwen3.6-27B-NVFP4 | `recipes/qwen3.6-27b-nvfp4.yaml` | `run-qwen3.6-27b-nvfp4.sh` / `-solo` / `-pp2` |
 | Qwen3.6-35B-A3B | `recipes/qwen3.6-35b-a3b-*.yaml` | `run-qwen3.6-35b.sh` / `-solo` / `-pp2` |
-| Qwen3.8-27B-FP8 | `recipes/qwen3.8-27b-fp8.yaml` | `run-qwen3.8-27b.sh` / `-solo` / `-pp2` |
+| Qwen3.8-27B-NVFP4 + DFlash2 | `recipes/qwen3.8-27b-dflash2.yaml` | `run-qwen3.8-27b-dflash2.sh` |
 | Qwen3.5-122B-NVFP4 | `recipes/qwen3.5-122b-nvfp4.yaml` | `run-qwen3.5-122b-nvfp4.sh` / `-solo` / `-pp2` |
 | DeepSeek-V4-Flash | `recipes/deepseek-v4-flash.yaml` | `run-dsv4f.sh` |
 | DeepSeek-V4-Flash-0731 | `recipes/deepseek-v4-flash-0731.yaml` | `run-dsv4f-0731.sh` |
