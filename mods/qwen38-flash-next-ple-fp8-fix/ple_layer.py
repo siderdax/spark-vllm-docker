@@ -183,12 +183,36 @@ def _get_ple_embedding_quant_method(
 ) -> QuantizeMethodBase | None:
     """Select global-scale FP8 only for quantized PLE checkpoint shards."""
 
-    # Hybrid ModelOpt checkpoints (e.g. NVFP4 routed experts) keep the PLE
-    # n-gram table as FP8 shards with a single global scale even though the
-    # model-level quant config is not Fp8Config. The text config declares this
-    # via ple_embedding_dtype == "float8_e4m3fn".
+    # Hybrid ModelOpt checkpoints (e.g. RadixArk/Qwen3.8-Flash-Next-NVFP4) keep
+    # the PLE n-gram table as FP8 shards with a single global scale even though
+    # the model-level quant config is not Fp8Config. The text config declares
+    # this via ple_embedding_dtype == "float8_e4m3fn".
     if ple_embedding_dtype == "float8_e4m3fn":
         return Qwen3_8FlashNextPLEFp8EmbeddingMethod()
+
+    # nvidia/Qwen3.8-Flash-Next-NVFP4 doesn't populate ple_embedding_dtype at
+    # all, but its outer quant config is ModelOptMixedPrecisionConfig (quant
+    # method "modelopt_mixed"), which already carries a correct per-layer
+    # quant_algo lookup (hf_quant_config.json's "quantized_layers" map) that
+    # vLLM itself uses to resolve the 48 NVFP4 MoE-expert layers -- reuse the
+    # same lookup for the PLE embedding prefix instead of re-deriving it.
+    # Without this, the FP8-quantized ngram_embedding weight (and its paired
+    # weight_scale buffer) silently falls through to the unquantized default
+    # embedding path: the raw FP8 bytes get value-cast to bf16 with no scale
+    # applied at all, producing garbage output with no crash (verified
+    # 2026-09-09: incoherent completions, e.g. "The capital of France is" ->
+    # random token soup -- root-caused to exactly this). Dead code for
+    # RadixArk's checkpoint (returns above, at the ple_embedding_dtype check,
+    # before reaching this) and a no-op even if it weren't (RadixArk's
+    # quant_config is ModelOptNvFp4Config, which has no _resolve_quant_algo
+    # method, so getattr(...) below is None and callable() is False) --
+    # verified safe by code inspection, not yet by a RadixArk launch-test with
+    # this fix applied.
+    resolve_quant_algo = getattr(quant_config, "_resolve_quant_algo", None)
+    if callable(resolve_quant_algo):
+        algo = resolve_quant_algo(prefix)
+        if algo == "FP8":
+            return Qwen3_8FlashNextPLEFp8EmbeddingMethod()
 
     if not isinstance(quant_config, Fp8Config):
         return None
