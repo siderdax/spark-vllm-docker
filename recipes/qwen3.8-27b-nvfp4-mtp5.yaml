@@ -1,20 +1,36 @@
 # Recipe: Qwen3.8-27B-NVFP4 (MTP-5)
-# Sibling of recipes/qwen3.8-27b-nvfp4.yaml (MTP-3 default), same target
-# checkpoint (unsloth/Qwen3.8-27B-NVFP4 -- see that recipe's header for the
-# 3-way source bench that picked it), num_speculative_tokens bumped 3 -> 5
-# for a 4-way NVFP4/FP8 x MTP-5/DFlash2 comparison requested 2026-08-31.
+# Sibling of recipes/qwen3.8-27b-nvfp4-dflash2.yaml (the recommended default,
+# DFlash2 spec decode) for a native-MTP comparison. num_speculative_tokens=5,
+# from a 4-way NVFP4/FP8 x MTP-5/DFlash2 comparison run 2026-08-31 against
+# unsloth/Qwen3.8-27B-NVFP4 as the target checkpoint (see project memory
+# qwen38-27b-dflash2-recipe for the full table).
 #
-# VERIFIED 2026-08-31: 9/9 context-bench.py quality passes. Decode 33.22 t/s
-# at pp2048, 26.20 t/s at pp16384 -- loses to recipes/qwen3.8-27b-dflash2.yaml
-# (NVFP4+DFlash2, 36.62 t/s at pp16384) at longer prompts. See project memory
-# qwen38-27b-dflash2-recipe for the full 4-way table.
+# VERIFIED 2026-08-31 (unsloth checkpoint): 9/9 context-bench.py quality
+# passes. Decode 33.22 t/s at pp2048, 26.20 t/s at pp16384 -- loses to
+# DFlash2 (36.62 t/s at pp16384) at longer prompts.
+#
+# SWITCHED 2026-09-09 to nvidia/Qwen3.8-27B-NVFP4, NVIDIA's own first-party
+# ModelOpt quant (released 2026-09-08, same Qwen3.8-27B base, architecture
+# Qwen3_5ForConditionalGeneration -- config-compatible drop-in for the
+# unsloth checkpoint, no mod/image changes needed). Same mixed-precision
+# layout as the community quants already used here (NVFP4 on MLP + lm_head,
+# FP8 on attention/linear-attention -- see quant-source-quality-heuristic)
+# but backed by a published methodology (Local-Hessian calibration, 2048
+# samples) and a 6-benchmark eval table showing near-baseline retention
+# (e.g. GPQA Diamond 88.01 vs BF16's 88.92, IFBench 78.93 vs 80.07) -- more
+# complete than what unsloth or RadixArk published. Also smaller: 20.42GiB
+# / 3 shards vs unsloth's 23.42GiB. Added --kv-cache-dtype fp8_e4m3 per
+# NVIDIA's model card, matching the FP8-quantized attention layers.
+# NOT YET RE-VERIFIED with this checkpoint -- model is still downloading;
+# rerun context-bench.py + llama-benchy before trusting the numbers above
+# for this specific source.
 
 recipe_version: "1"
 name: Qwen3.8-27B-NVFP4-MTP5
-description: vLLM serving unsloth/Qwen3.8-27B-NVFP4 on DGX Spark (tp2) with MTP-5
+description: vLLM serving nvidia/Qwen3.8-27B-NVFP4 on DGX Spark (tp2) with MTP-5
 
 # HuggingFace model
-model: unsloth/Qwen3.8-27B-NVFP4
+model: nvidia/Qwen3.8-27B-NVFP4
 
 # Container image
 container: vllm-node
@@ -28,7 +44,7 @@ defaults:
   host: 0.0.0.0
   tensor_parallel: 2
   gpu_memory_utilization: 0.85
-  max_model_len: 131072
+  max_model_len: 262144
   max_num_batched_tokens: 4096
   max_num_seqs: 64
   served_model_name: qwen3.8-27b
@@ -41,7 +57,7 @@ env:
 
 # The vLLM serve command template
 command: |
-  vllm serve unsloth/Qwen3.8-27B-NVFP4 \
+  vllm serve nvidia/Qwen3.8-27B-NVFP4 \
     --host {host} \
     --port {port} \
     --served-model-name {served_model_name} \
@@ -49,6 +65,7 @@ command: |
     --max-num-batched-tokens {max_num_batched_tokens} \
     --max-num-seqs {max_num_seqs} \
     --gpu-memory-utilization {gpu_memory_utilization} \
+    --kv-cache-dtype fp8_e4m3 \
     --trust-remote-code \
     --enable-prefix-caching \
     --enable-auto-tool-choice \

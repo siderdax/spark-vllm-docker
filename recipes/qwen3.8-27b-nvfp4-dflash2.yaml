@@ -1,10 +1,11 @@
 # Recipe: Qwen3.8-27B-NVFP4 + DFlash2 speculative decoding
-# Sibling of recipes/qwen3.8-27b-nvfp4.yaml (which uses Qwen's native MTP-3
-# draft head) for a direct speed/quality comparison -- same target checkpoint
-# (unsloth/Qwen3.8-27B-NVFP4, see that recipe's header for why it was picked
-# over Inferact/RadixArk), swapping the speculative method to DFlash2 (a
-# block-diffusion drafter that predicts a whole token block per pass, see
-# incoai's model card / the DFlash paper, ICML 2026).
+# The recommended default for Qwen3.8-27B on this cluster -- winner of a
+# 4-way NVFP4/FP8 x MTP-5/DFlash2 comparison (see project memory
+# qwen38-27b-dflash2-recipe). Sibling of recipes/qwen3.8-27b-nvfp4-mtp5.yaml
+# (native MTP-5) for a direct speed/quality comparison -- same target
+# checkpoint, swapping the speculative method to DFlash2 (a block-diffusion
+# drafter that predicts a whole token block per pass, see incoai's model
+# card / the DFlash paper, ICML 2026).
 #
 # Draft model source: incoai/Qwen3.8-27B-DFlash2, not the z-lab mirror
 # (z-lab/Qwen3.8-27B-DFlash2, which its own README describes as a literal
@@ -30,21 +31,37 @@
 # no MoE) -- no special container/kernel patches needed, just the standard
 # vllm-node image and the existing mods/fix-qwen3.8-chat-template.
 #
-# VERIFIED 2026-08-31: launch-tested on raven+quaker, 9/9 context-bench.py
-# quality passes (8K/32K/100K tokens x 3 depths). Winner of a 4-way
-# NVFP4/FP8 x MTP-5/DFlash2 comparison -- decode 31.90 t/s at pp2048,
-# 36.62 t/s at pp16384 (llama-benchy --pp 2048,16384 --tg 256 --exact-tg
-# --runs 3), best of all four. See recipes/qwen3.8-27b-nvfp4-mtp5.yaml,
-# recipes/qwen3.8-27b-fp8-mtp5.yaml, recipes/qwen3.8-27b-fp8-dflash2.yaml
-# for the siblings and project memory qwen38-27b-dflash2-recipe for the
-# full table. Recommended default for this model going forward.
+# VERIFIED 2026-08-31 (unsloth/Qwen3.8-27B-NVFP4 checkpoint): launch-tested
+# on raven+quaker, 9/9 context-bench.py quality passes (8K/32K/100K tokens x
+# 3 depths). Winner of a 4-way NVFP4/FP8 x MTP-5/DFlash2 comparison -- decode
+# 31.90 t/s at pp2048, 36.62 t/s at pp16384 (llama-benchy --pp 2048,16384
+# --tg 256 --exact-tg --runs 3), best of all four. See
+# recipes/qwen3.8-27b-nvfp4-mtp5.yaml, recipes/qwen3.8-27b-fp8-mtp5.yaml,
+# recipes/qwen3.8-27b-fp8-dflash2.yaml for the siblings and project memory
+# qwen38-27b-dflash2-recipe for the full table.
+#
+# SWITCHED 2026-09-09 to nvidia/Qwen3.8-27B-NVFP4, NVIDIA's own first-party
+# ModelOpt quant (released 2026-09-08, same Qwen3.8-27B base, architecture
+# Qwen3_5ForConditionalGeneration -- config-compatible drop-in for the
+# unsloth checkpoint, no mod/image changes needed). Same mixed-precision
+# layout as the community quants already used here (NVFP4 on MLP + lm_head,
+# FP8 on attention/linear-attention -- see quant-source-quality-heuristic)
+# but backed by a published methodology (Local-Hessian calibration, 2048
+# samples) and a 6-benchmark eval table (GPQA Diamond 88.01 vs BF16's 88.92,
+# Terminal-Bench 74.02 vs 75.56, IFBench 78.93 vs 80.07, etc. --
+# near-baseline across the board) -- more complete than what unsloth or
+# RadixArk published. Also smaller: 20.42GiB / 3 shards vs unsloth's
+# 23.42GiB. Added --kv-cache-dtype fp8_e4m3 per NVIDIA's model card,
+# matching the FP8-quantized attention layers. NOT YET RE-VERIFIED with
+# this checkpoint -- model is still downloading; rerun context-bench.py +
+# llama-benchy before trusting the numbers above for this specific source.
 
 recipe_version: "1"
 name: Qwen3.8-27B-DFlash2
-description: vLLM serving unsloth/Qwen3.8-27B-NVFP4 on DGX Spark (tp2) with DFlash2 spec decode
+description: vLLM serving nvidia/Qwen3.8-27B-NVFP4 on DGX Spark (tp2) with DFlash2 spec decode
 
 # HuggingFace model
-model: unsloth/Qwen3.8-27B-NVFP4
+model: nvidia/Qwen3.8-27B-NVFP4
 
 # Container image
 container: vllm-node
@@ -58,7 +75,7 @@ defaults:
   host: 0.0.0.0
   tensor_parallel: 2
   gpu_memory_utilization: 0.85
-  max_model_len: 131072
+  max_model_len: 262144
   max_num_batched_tokens: 4096
   max_num_seqs: 64
   served_model_name: qwen3.8-27b
@@ -71,7 +88,7 @@ env:
 
 # The vLLM serve command template
 command: |
-  vllm serve unsloth/Qwen3.8-27B-NVFP4 \
+  vllm serve nvidia/Qwen3.8-27B-NVFP4 \
     --host {host} \
     --port {port} \
     --served-model-name {served_model_name} \
@@ -79,6 +96,7 @@ command: |
     --max-num-batched-tokens {max_num_batched_tokens} \
     --max-num-seqs {max_num_seqs} \
     --gpu-memory-utilization {gpu_memory_utilization} \
+    --kv-cache-dtype fp8_e4m3 \
     --trust-remote-code \
     --enable-prefix-caching \
     --enable-auto-tool-choice \
