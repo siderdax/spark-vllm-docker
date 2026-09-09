@@ -26,6 +26,7 @@ These recipes and `run-*.sh` wrappers exist only in this fork (not upstream):
 | DeepSeek-V4-Flash-0731 | `recipes/deepseek-v4-flash-0731.yaml` | `run-dsv4f-0731.sh` |
 | MiniMax-M2.7-NVFP4 | `recipes/minimax-m2.7-nvfp4.yaml` | `run-minimax-m2.7.sh` |
 | GLM-5.3-Flash-NVFP4 + DFlash2 | `recipes/glm5.3-flash-dflash2.yaml` | `run-glm5.3-flash-dflash2.sh` |
+| Qwen3.8-Flash-Next-NVFP4 + MTP-4 | `recipes/qwen3.8-flash-next-nvfp4.yaml` | `run-qwen3.8-flash-next.sh` |
 
 ```bash
 ./run-qwen3.8-27b.sh          # tp2 cluster (raven+quaker), the recipe default

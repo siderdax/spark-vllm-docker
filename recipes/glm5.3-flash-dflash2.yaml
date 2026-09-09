@@ -75,7 +75,7 @@ defaults:
   gpu_memory_utilization: 0.85
   max_model_len: 524288
   max_num_seqs: 6
-  served_model_name: glm-5.3-flash
+  served_model_name: RedHatAI/GLM-5.3-Flash-NVFP4
 
 env:
   # NOTE: this recipe-level env: block does NOT reach worker nodes in

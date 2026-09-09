@@ -1,0 +1,124 @@
+# Recipe: Qwen3.8-Flash-Next-NVFP4 (nvidia), MTP-4, TP2 -- served on vllm-node
+#
+# Fourth attempt at this model on raven+quaker. History:
+#   1. Inferact/Qwen3.8-Flash-Next-NVFP4 -- OOM/froze the node. See project
+#      memory qwen38-flash-next-oom-blocker.
+#   2. RadixArk/Qwen3.8-Flash-Next-NVFP4 -- the fix, still a verified-working
+#      option: recipes/qwen3.8-flash-next-nvfp4-radixark.yaml. See project
+#      memory qwen38-flash-next-radixark-success.
+#   3. nvidia/Qwen3.8-Flash-Next-NVFP4 on the frozen `vllm/vllm-openai:
+#      qwen38-flash-next` Docker Hub tag (built 2026-08-26) -- base MoE+PLE
+#      path worked after extending mods/qwen38-flash-next-ple-fp8-fix, but
+#      MTP failed to load: this vLLM build's MTP module didn't support
+#      nvidia's FP8_BLOCK_SCALES-quantized MTP routed experts
+#      (AttributeError: ... no parameter 'w2_weight_scale_inv' ...). See
+#      project memory qwen38-flash-next-nvidia-quant-attempt.
+#   4. This recipe (2026-09-09): same nvidia/Qwen3.8-Flash-Next-NVFP4
+#      checkpoint, but served on this repo's own `vllm-node` image, rebuilt
+#      from current vLLM main (`./build-and-copy.sh --rebuild-vllm --copy-to`,
+#      version 0.28.1rc1.dev588+gc7e9816c6.d20260909). Upstream vLLM PR #55513
+#      ("Fix block FP8 MTP in ModelOpt mixed checkpoints", merged 2026-09-08,
+#      reviewer-verified against this exact checkpoint) should fix the MTP
+#      crash from attempt 3.
+#
+# WHAT CHANGED IN THE MODEL'S INTERNAL PATH: between the 2026-08-26 build and
+# current main, this model's vLLM implementation moved from the preview path
+# `vllm.models.qwen3_8_flash_next` to `vllm.models.qwen4_exp` (matching its
+# actual architecture name, Qwen4ExpForConditionalGeneration/model_type
+# qwen4_exp) as part of landing in mainline. Confirmed the new
+# `qwen4_exp/nvidia/ple_layer.py`'s `_get_ple_embedding_quant_method` already
+# contains the same fix we wrote ourselves for attempt 3 (checks
+# `isinstance(quant_config, ModelOptMixedPrecisionConfig)` +
+# `_resolve_quant_algo(prefix) == "FP8"`) -- so mods/qwen38-flash-next-ple-fp8-fix
+# is NOT included here: its hardcoded target path
+# (.../qwen3_8_flash_next/nvidia/ple_layer.py) no longer exists on this
+# build, and the fix it would apply is already upstream.
+#
+# num_speculative_tokens=4, NOT 5: attempt 4's first try used 5 (matching the
+# Qwen3.8-27B MTP-5 convention) and hit a second, unrelated bug:
+#   AssertionError: QSA ring capacity 12 must divide the attention block size 1616
+# Root cause (vllm/models/qwen4_exp/common/qsa_cache.py):
+#   span = indexer_compress_ratio + num_speculative_tokens   # compress_ratio=4 (fixed, from config.json)
+#   capacity = compress_ratio * ceil(span / compress_ratio)
+#   assert block_size % capacity == 0   # block_size=1616, auto-set to satisfy mamba-page-size >= attention-page-size
+# num_speculative_tokens=5 -> span=9 -> capacity=12, and 1616 % 12 != 0 -> crash.
+# num_speculative_tokens=4 -> span=8 -> capacity=8, and 1616 % 8 == 0 -> fine.
+# This is presumably why RadixArk's recipe (attempt 2) already used MTP-4, not
+# some higher value -- not a deliberate tuning choice, just the only nearby
+# value whose derived ring capacity happens to divide this hardware's
+# auto-computed block size. Do not bump this without re-deriving the divisibility.
+#
+# --quantization modelopt (not modelopt_fp4) per NVIDIA's own documented
+# command -- this checkpoint's quant_algo is "MIXED_PRECISION"
+# (vLLM auto-resolves this to its internal "modelopt_mixed" config either
+# way, confirmed in engine startup logs).
+#
+# VERIFIED 2026-09-09: launch-tested on raven+quaker, both /v1/completions and
+# /v1/chat/completions coherent (Korean prompt answered correctly), 9/9
+# context-bench.py passes (8K/32K/100K tokens x 3 depths). llama-benchy
+# (--pp 2048,16384 --tg 256 --exact-tg --runs 3): decode 37.59 t/s at pp2048,
+# 32.69 t/s at pp16384 -- within RadixArk's previously-recorded 30-38 t/s
+# decode range (no precise pp-matched RadixArk numbers exist for a stricter
+# comparison), so not a clear speed win either way. PROMOTED to the active
+# default (run-qwen3.8-flash-next.sh) anyway: same speed class, but this
+# image is one we can rebuild ourselves, unlike RadixArk's frozen Docker Hub
+# tag (moved to reserved_runs/run-qwen3.8-flash-next-radixark.yaml as
+# fallback). See project memory qwen38-flash-next-nvidia-quant-attempt.
+
+recipe_version: "1"
+name: Qwen3.8-Flash-Next-NVFP4
+description: vLLM serving nvidia/Qwen3.8-Flash-Next-NVFP4 on 2x DGX Spark (TP2) with MTP-4, on a from-main vllm-node build -- active default
+
+# HuggingFace model
+model: nvidia/Qwen3.8-Flash-Next-NVFP4
+
+cluster_only: true
+solo_only: false
+
+# This repo's own source-built image (rebuilt from vLLM main 2026-09-09 to
+# pick up PR #55513) -- NOT the frozen vllm/vllm-openai:qwen38-flash-next tag.
+container: vllm-node
+
+mods:
+  - mods/drop-caches
+  - mods/fix-qwen3.8-chat-template
+
+# Default settings
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  tensor_parallel: 2
+  gpu_memory_utilization: 0.85
+  max_model_len: 262144
+  max_num_batched_tokens: 8192
+  max_num_seqs: 8
+  served_model_name: nvidia/Qwen3.8-Flash-Next-NVFP4
+
+# Environment variables
+env:
+  VLLM_ENGINE_READY_TIMEOUT_S: "3600"
+  HF_HUB_OFFLINE: "1"
+  TRANSFORMERS_OFFLINE: "1"
+
+# The vLLM serve command template
+command: |
+  vllm serve nvidia/Qwen3.8-Flash-Next-NVFP4 \
+    --host {host} \
+    --port {port} \
+    --served-model-name {served_model_name} \
+    --quantization modelopt \
+    --max-model-len {max_model_len} \
+    --max-num-batched-tokens {max_num_batched_tokens} \
+    --max-num-seqs {max_num_seqs} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --trust-remote-code \
+    --enforce-eager \
+    --enable-chunked-prefill \
+    --enable-prefix-caching \
+    --no-enable-flashinfer-autotune \
+    --enable-auto-tool-choice \
+    --tool-call-parser qwen3_xml \
+    --reasoning-parser qwen3 \
+    --chat-template fixed_chat_template.jinja \
+    --speculative-config '{{"method":"mtp","num_speculative_tokens":4}}' \
+    -tp {tensor_parallel}

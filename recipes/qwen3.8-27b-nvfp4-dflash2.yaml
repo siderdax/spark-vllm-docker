@@ -78,7 +78,7 @@ defaults:
   max_model_len: 262144
   max_num_batched_tokens: 4096
   max_num_seqs: 64
-  served_model_name: qwen3.8-27b
+  served_model_name: nvidia/Qwen3.8-27B-NVFP4
 
 # Environment variables
 env:
