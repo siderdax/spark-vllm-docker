@@ -3,7 +3,7 @@
 #
 # Kept for reference only. This is upstream (eugr/spark-vllm-docker main)'s version
 # of the 0731 recipe; the recipe this fork actually uses is
-# recipes/deepseek-v4-flash-0731.yaml. run-dsv4f-0731.sh points at that one, not
+# custom_recipes/deepseek-v4-flash-0731.yaml. run-dsv4f-0731.sh points at that one, not
 # this file.
 #
 # Benchmarked head-to-head on raven+quaker 2026-08-26:
@@ -23,7 +23,7 @@
 #   safetensors loader — which resolves each accessed tensor as its own
 #   scattered page-fault, so a handful of small params spread across shards
 #   can cost more in random-read overhead than just re-streaming everything.
-# Conclusion: recipes/deepseek-v4-flash-0731.yaml (no mod, tuned defaults,
+# Conclusion: custom_recipes/deepseek-v4-flash-0731.yaml (no mod, tuned defaults,
 # --override-generation-config, reasoning_effort=max) stays the active recipe.
 # Re-benchmark this file if upstream changes the mod or the b12x image
 # meaningfully.

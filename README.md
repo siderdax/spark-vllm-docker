@@ -17,16 +17,16 @@ These recipes and `run-*.sh` wrappers exist only in this fork (not upstream):
 
 | Model | Recipe(s) | Wrappers |
 |---|---|---|
-| Qwen3.6-27B-FP8 | `recipes/qwen3.6-27b-fp8.yaml` | `run-qwen3.6-27b.sh` / `-solo` / `-pp2` |
-| Qwen3.6-27B-NVFP4 | `recipes/qwen3.6-27b-nvfp4.yaml` | `run-qwen3.6-27b-nvfp4.sh` / `-solo` / `-pp2` |
+| Qwen3.6-27B-FP8 | `custom_recipes/qwen3.6-27b-fp8.yaml` | `run-qwen3.6-27b.sh` / `-solo` / `-pp2` |
+| Qwen3.6-27B-NVFP4 | `custom_recipes/qwen3.6-27b-nvfp4.yaml` | `run-qwen3.6-27b-nvfp4.sh` / `-solo` / `-pp2` |
 | Qwen3.6-35B-A3B | `recipes/qwen3.6-35b-a3b-*.yaml` | `run-qwen3.6-35b.sh` / `-solo` / `-pp2` |
-| Qwen3.8-27B-NVFP4 + DFlash2 | `recipes/qwen3.8-27b-nvfp4-dflash2-nvidia.yaml` | `run-qwen3.8-27b-dflash2.sh` |
-| Qwen3.5-122B-NVFP4 | `recipes/qwen3.5-122b-nvfp4.yaml` | `run-qwen3.5-122b-nvfp4.sh` / `-solo` / `-pp2` |
-| DeepSeek-V4-Flash | `recipes/deepseek-v4-flash.yaml` | `run-dsv4f.sh` |
-| DeepSeek-V4-Flash-0731 | `recipes/deepseek-v4-flash-0731.yaml` | `run-dsv4f-0731.sh` |
-| MiniMax-M2.7-NVFP4 | `recipes/minimax-m2.7-nvfp4.yaml` | `run-minimax-m2.7.sh` |
-| GLM-5.3-Flash-NVFP4 + DFlash2 | `recipes/glm5.3-flash-dflash2.yaml` | `run-glm5.3-flash-dflash2.sh` |
-| Qwen3.8-Flash-Next-NVFP4 + MTP-4 | `recipes/qwen3.8-flash-next-nvfp4.yaml` | `run-qwen3.8-flash-next.sh` |
+| Qwen3.8-27B-NVFP4 + DFlash2 | `custom_recipes/qwen3.8-27b-nvfp4-dflash2-nvidia.yaml` | `run-qwen3.8-27b-dflash2.sh` |
+| Qwen3.5-122B-NVFP4 | `custom_recipes/qwen3.5-122b-nvfp4.yaml` | `run-qwen3.5-122b-nvfp4.sh` / `-solo` / `-pp2` |
+| DeepSeek-V4-Flash | `custom_recipes/deepseek-v4-flash.yaml` | `run-dsv4f.sh` |
+| DeepSeek-V4-Flash-0731 | `custom_recipes/deepseek-v4-flash-0731.yaml` | `run-dsv4f-0731.sh` |
+| MiniMax-M2.7-NVFP4 | `custom_recipes/minimax-m2.7-nvfp4.yaml` | `run-minimax-m2.7.sh` |
+| GLM-5.3-Flash-NVFP4 + DFlash2 | `custom_recipes/glm5.3-flash-dflash2.yaml` | `run-glm5.3-flash-dflash2.sh` |
+| Qwen3.8-Flash-Next-NVFP4 + MTP-4 | `custom_recipes/qwen3.8-flash-next-nvfp4.yaml` | `run-qwen3.8-flash-next.sh` |
 
 ```bash
 ./run-qwen3.8-27b.sh          # tp2 cluster (raven+quaker), the recipe default
@@ -68,17 +68,17 @@ on this exact hardware (seven day-0 bugs found and fixed, including the
 same NoPE-MLA backend gap we found ourselves). Its `sm121-v11-dflash2`
 image bakes every patch in at `docker build` time instead of on every
 container launch, which sidesteps our JIT-cache problem entirely — see
-`recipes/glm5.3-flash-dflash2.yaml`'s header for the detailed comparison.
+`custom_recipes/glm5.3-flash-dflash2.yaml`'s header for the detailed comparison.
 
 Also adopted their finding that **`LibertAIDAI/GLM-5.3-Flash-NVFP4`
 (ModelOpt NVFP4) has a confirmed intermittent token-corruption bug**
 ([vllm-project/vllm#54150](https://github.com/vllm-project/vllm/issues/54150)) —
 reproduced 4/9/8 corrupted-token runs out of 3 vs 0/0/0 for
 `RedHatAI/GLM-5.3-Flash-NVFP4` (compressed-tensors) on their own probe.
-`recipes/glm5.3-flash-dflash2.yaml` uses the RedHatAI checkpoint as a
+`custom_recipes/glm5.3-flash-dflash2.yaml` uses the RedHatAI checkpoint as a
 result.
 
-`recipes/glm5.3-flash-dflash2.yaml` / `run-glm5.3-flash-dflash2.sh` are
+`custom_recipes/glm5.3-flash-dflash2.yaml` / `run-glm5.3-flash-dflash2.sh` are
 this fork's translation of their `launch-glm53-vllm-tp2-dflash2.sh` into
 our recipe/`launch-cluster.sh` system (their launcher is a raw two-step
 manual `docker run`, worker-then-head) — adapted our cluster IPs/HF-cache
@@ -96,7 +96,7 @@ kept in the repo for reference, not wired into the DFlash2 launch path.
 
 #### Merged upstream `main` (8 months of drift); kept our DeepSeek-V4-Flash-0731 recipe over upstream's
 
-Local `main` had fallen 61 commits behind `origin/main` (eugr/spark-vllm-docker), which had independently diverged by 40k+ lines while this fork's `local-tuning` branch grew alongside it. Fast-forwarded local `main` to the current fork remote, then merged it into `local-tuning`. Only 3 files actually conflicted: `.gitignore` (trivial union), `README.md` (kept ours — this file was just rewritten to be fork-specific), and `recipes/deepseek-v4-flash-0731.yaml`, where upstream had independently built its own version of the same recipe.
+Local `main` had fallen 61 commits behind `origin/main` (eugr/spark-vllm-docker), which had independently diverged by 40k+ lines while this fork's `local-tuning` branch grew alongside it. Fast-forwarded local `main` to the current fork remote, then merged it into `local-tuning`. Only 3 files actually conflicted: `.gitignore` (trivial union), `README.md` (kept ours — this file was just rewritten to be fork-specific), and `custom_recipes/deepseek-v4-flash-0731.yaml`, where upstream had independently built its own version of the same recipe.
 
 Benchmarked both on raven+quaker (TP2) before resolving that conflict:
 
@@ -106,7 +106,7 @@ Benchmarked both on raven+quaker (TP2) before resolving that conflict:
 
 **Why the mod backfired here** (researched, not just measured): [InstantTensor](https://github.com/scitix/InstantTensor) is a purpose-built loader — Direct I/O, pipelined prefetch, optionally GPUDirect Storage — tuned to saturate sequential read bandwidth. Our ~20s for 155GB (~7.5-8 GB/s) lines up with [DGX Spark's measured internal NVMe throughput](https://docs.nvidia.com/dgx/bp-dgx/storage.html) (cached reads ~10.6 GB/s, disk reads ~6.6 GB/s), so InstantTensor is already running close to the hardware ceiling. The mod's "lazy safetensors" fallback is the standard library's mmap-based lazy loader, which — per [vllm-project/vllm#40988](https://github.com/vllm-project/vllm/issues/40988) and general safetensors performance writeups — resolves each accessed tensor as its own scattered page-fault, sometimes thousands of small random reads per shard. Even though the DSpark draft is tiny (97 params), if those params are spread across the checkpoint's shard files, mmap's per-tensor random-read overhead outweighs the "less total data" theoretically read. The mod likely earns its keep in setups without a Direct-I/O loader like InstantTensor already saturating the drive; on top of one, it doesn't have anything left to win.
 
-Kept `recipes/deepseek-v4-flash-0731.yaml` as our version (no mod, tuned defaults, `--override-generation-config`, `reasoning_effort=max`). Preserved upstream's version as `recipes/deepseek-v4-flash-0731-selfbuilt.yaml` for reference, in case a future upstream image/mod change is worth re-testing — it's not wired into any `run-*.sh` wrapper.
+Kept `custom_recipes/deepseek-v4-flash-0731.yaml` as our version (no mod, tuned defaults, `--override-generation-config`, `reasoning_effort=max`). Preserved upstream's version as `recipes/deepseek-v4-flash-0731-selfbuilt.yaml` for reference, in case a future upstream image/mod change is worth re-testing — it's not wired into any `run-*.sh` wrapper.
 
 #### MTP speculative decoding enabled by default on Qwen3.6/3.8
 
@@ -151,7 +151,7 @@ reasoning_effort/preserve_thinking claims were asserted for those two.
 #### Qwen3.8-27B: thinking-mode sampling defaults + opencode-hang troubleshooting doc
 
 Added `--override-generation-config '{"temperature": 1.0, "top_p": 0.95, "top_k": 20}'` to
-`recipes/qwen3.8-27b-fp8.yaml` — Qwen's documented thinking-mode sampling recommendation. vLLM
+`custom_recipes/qwen3.8-27b-fp8.yaml` — Qwen's documented thinking-mode sampling recommendation. vLLM
 defaults `top_k` to unbounded (-1), which diverges from that recommendation and can let `<think>`
 generations ramble; this only fills gaps for clients that don't set their own sampling params.
 Also expanded the recipe's header comment into a troubleshooting section covering opencode
@@ -180,7 +180,7 @@ Neither `deepseek-v4-flash` nor `deepseek-v4-flash-0731` set `--override-generat
 
 #### Qwen3.8-27B-FP8 recipe with chat-template fix and launch wrappers
 
-Added `recipes/qwen3.8-27b-fp8.yaml`, porting the same chat-template robustness fixes used for Qwen3.6 (`mods/fix-qwen3.8-chat-template`) onto Qwen3.8's actual template — no developer-role support, tool-call argument handling on non-mapping args, no auto-close for a dangling `<think>` before a `<tool_call>` — while preserving Qwen3.8's `reasoning_effort` (xhigh/medium/low) system-prompt injection that the plain Qwen3.6 fix doesn't have. Also added `run-qwen3.8-27b.sh`/`-solo`/`-pp2` launch wrappers mirroring the existing raven+quaker pattern.
+Added `custom_recipes/qwen3.8-27b-fp8.yaml`, porting the same chat-template robustness fixes used for Qwen3.6 (`mods/fix-qwen3.8-chat-template`) onto Qwen3.8's actual template — no developer-role support, tool-call argument handling on non-mapping args, no auto-close for a dangling `<think>` before a `<tool_call>` — while preserving Qwen3.8's `reasoning_effort` (xhigh/medium/low) system-prompt injection that the plain Qwen3.6 fix doesn't have. Also added `run-qwen3.8-27b.sh`/`-solo`/`-pp2` launch wrappers mirroring the existing raven+quaker pattern.
 
 ### 2026-08-14
 
@@ -190,7 +190,7 @@ Added a needle-in-a-haystack benchmark (see [below](#long-context-correctness-co
 
 #### DeepSeek-V4-Flash-0731 DSpark fix: official B12X image
 
-`recipes/deepseek-v4-flash-0731.yaml` previously failed to start DSpark speculative decoding on our self-built `vllm-node` image (`sparse_mla_sm120.cu: Check failed: num_tokens > 64`), and `mtp` can't load 0731's restructured MTP block at all. Switched the recipe's container to the official `recipes.vllm.ai` DGX Spark (GB10) image, `eugr/spark-vllm-b12x:latest`, and added the matching `--moe-backend`/`--linear-backend`/`--attention-backend b12x`/`B12X_MLA_SPARSE` flags and env vars. Verified end-to-end on raven+quaker (server starts, health check passes, long-context bench above).
+`custom_recipes/deepseek-v4-flash-0731.yaml` previously failed to start DSpark speculative decoding on our self-built `vllm-node` image (`sparse_mla_sm120.cu: Check failed: num_tokens > 64`), and `mtp` can't load 0731's restructured MTP block at all. Switched the recipe's container to the official `recipes.vllm.ai` DGX Spark (GB10) image, `eugr/spark-vllm-b12x:latest`, and added the matching `--moe-backend`/`--linear-backend`/`--attention-backend b12x`/`B12X_MLA_SPARSE` flags and env vars. Verified end-to-end on raven+quaker (server starts, health check passes, long-context bench above).
 
 ### 2026-08-02
 

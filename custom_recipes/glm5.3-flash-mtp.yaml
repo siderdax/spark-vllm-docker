@@ -1,6 +1,6 @@
 # Recipe: GLM-5.3-Flash-NVFP4 + native MTP speculative decoding, TP2 on 2x DGX Spark (GB10/SM121)
 #
-# Sibling of recipes/glm5.3-flash-dflash2.yaml for a direct speed comparison
+# Sibling of custom_recipes/glm5.3-flash-dflash2.yaml for a direct speed comparison
 # (2026-08-30) -- same model/hardware, swaps DFlash2's external drafter for
 # GLM-5.3-Flash's own built-in MTP head (Glm5NextMTPModel). Uses upstream's
 # base sm121-v8 image (no DFlash2 overlay) instead of sm121-v11-dflash2 --

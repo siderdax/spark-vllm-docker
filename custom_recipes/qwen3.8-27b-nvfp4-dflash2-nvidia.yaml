@@ -1,7 +1,7 @@
 # Recipe: Qwen3.8-27B-NVFP4 + DFlash2 speculative decoding
 # The recommended default for Qwen3.8-27B on this cluster -- winner of a
 # 4-way NVFP4/FP8 x MTP-5/DFlash2 comparison (see project memory
-# qwen38-27b-dflash2-recipe). Sibling of recipes/qwen3.8-27b-nvfp4-mtp5.yaml
+# qwen38-27b-dflash2-recipe). Sibling of custom_recipes/qwen3.8-27b-nvfp4-mtp5.yaml
 # (native MTP-5) for a direct speed/quality comparison -- same target
 # checkpoint, swapping the speculative method to DFlash2 (a block-diffusion
 # drafter that predicts a whole token block per pass, see incoai's model
@@ -15,11 +15,11 @@
 #   2. It already has a proven track record in this exact repo/hardware --
 #      incoai/GLM-5.3-Flash-DFlash2 is verified working end-to-end at
 #      100.0% draft acceptance on raven+quaker, see
-#      recipes/glm5.3-flash-dflash2.yaml / project memory
+#      custom_recipes/glm5.3-flash-dflash2.yaml / project memory
 #      glm53-flash-sm120-blocker.
 #   z-lab is itself a legitimate, long-running lab (dozens of DFlash/PARO
 #   models since 2025-10, incl. z-lab/Qwen3.6-35B-A3B-DFlash already used in
-#   recipes/qwen3.6-35b-a3b-fp8-dflash.yaml) -- not a reliability concern,
+#   custom_recipes/qwen3.6-35b-a3b-fp8-dflash.yaml) -- not a reliability concern,
 #   just redundant to prefer a mirror over the origin when both are equally
 #   available. See project memory quant-source-quality-heuristic.
 #
@@ -36,8 +36,8 @@
 # 3 depths). Winner of a 4-way NVFP4/FP8 x MTP-5/DFlash2 comparison -- decode
 # 31.90 t/s at pp2048, 36.62 t/s at pp16384 (llama-benchy --pp 2048,16384
 # --tg 256 --exact-tg --runs 3), best of all four. See
-# recipes/qwen3.8-27b-nvfp4-mtp5.yaml, recipes/qwen3.8-27b-fp8-mtp5.yaml,
-# recipes/qwen3.8-27b-fp8-dflash2.yaml for the siblings and project memory
+# custom_recipes/qwen3.8-27b-nvfp4-mtp5.yaml, custom_recipes/qwen3.8-27b-fp8-mtp5.yaml,
+# custom_recipes/qwen3.8-27b-fp8-dflash2.yaml for the siblings and project memory
 # qwen38-27b-dflash2-recipe for the full table.
 #
 # SWITCHED 2026-09-09 to nvidia/Qwen3.8-27B-NVFP4, NVIDIA's own first-party

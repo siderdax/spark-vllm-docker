@@ -1,5 +1,5 @@
 # Recipe: Qwen3.8-27B-FP8 (MTP-5)
-# Sibling of recipes/qwen3.8-27b-fp8.yaml (MTP-4 default), same target
+# Sibling of custom_recipes/qwen3.8-27b-fp8.yaml (MTP-4 default), same target
 # checkpoint (Qwen/Qwen3.8-27B-FP8), num_speculative_tokens bumped 4 -> 5
 # for a 4-way NVFP4/FP8 x MTP-5/DFlash2 comparison requested 2026-08-31.
 # See qwen3.8-27b-fp8.yaml for the full flag rationale (chat template,
@@ -8,7 +8,7 @@
 # VERIFIED 2026-08-31: 9/9 context-bench.py quality passes, but decode is
 # clearly memory-bandwidth-bound and MTP-5 barely helps -- flat 18.91 t/s at
 # pp2048, 18.81 t/s at pp16384. Worst of the 4-way comparison by a wide
-# margin; see recipes/qwen3.8-27b-fp8-dflash2.yaml for the same checkpoint
+# margin; see custom_recipes/qwen3.8-27b-fp8-dflash2.yaml for the same checkpoint
 # with DFlash2 instead (28-31 t/s). See project memory
 # qwen38-27b-dflash2-recipe for the full table.
 

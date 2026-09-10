@@ -2,7 +2,7 @@
 # Serve GLM-5.3-Flash-NVFP4 (RedHatAI checkpoint) + native MTP speculative
 # decoding on the 2-node cluster (raven+quaker, TP=2) -- sibling of
 # run-glm5.3-flash-dflash2.sh for a direct speed comparison, see
-# recipes/glm5.3-flash-mtp.yaml header. Once up, the OpenAI-compatible API
+# custom_recipes/glm5.3-flash-mtp.yaml header. Once up, the OpenAI-compatible API
 # is at http://localhost:8000/v1
 #
 # Prerequisites:
@@ -27,7 +27,7 @@ ssh quaker.local "docker run --rm --privileged --pid=host alpine sh -c 'sync; ec
 # path must exist on BOTH nodes independently -- launch-cluster.sh passes
 # -v mappings through unchanged, it does not scp them to workers the way it
 # does for mods/.
-exec ./run-recipe.sh glm5.3-flash-mtp \
+exec ./run-recipe.sh custom_recipes/glm5.3-flash-mtp \
   --volume "$HOME/patches/sparse_attn_indexer_kpool.py:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/sparse_attn_indexer_kpool.py:ro" \
   --env HF_HUB_OFFLINE=1 \
   --env TRANSFORMERS_OFFLINE=1 \

@@ -1,6 +1,6 @@
 # Recipe: Qwen3.8-Flash-Next-NVFP4 (RadixArk), MTP-4, TP2 -- RESERVED
 #
-# Superseded 2026-09-09 by recipes/qwen3.8-flash-next-nvfp4.yaml (nvidia's own
+# Superseded 2026-09-09 by custom_recipes/qwen3.8-flash-next-nvfp4.yaml (nvidia's own
 # checkpoint on this repo's own vllm-node, rebuilt from vLLM main to pick up
 # PR #55513 -- MTP-4 now verified working there too, comparable decode speed).
 # Kept as a fallback: this uses the officially-tagged, no-rebuild-required
@@ -8,7 +8,7 @@
 # vllm-node image ever needs troubleshooting. See project memory
 # qwen38-flash-next-nvidia-quant-attempt for the full comparison.
 #
-# Second attempt at this model on raven+quaker. The first (recipes/qwen3.8-flash-next-nvfp4.yaml,
+# Second attempt at this model on raven+quaker. The first (custom_recipes/qwen3.8-flash-next-nvfp4.yaml,
 # deleted 2026-08-28, see project memory qwen38-flash-next-oom-blocker) used
 # Inferact/Qwen3.8-Flash-Next-NVFP4 (182.78GB, ~91GiB/rank on TP2) and OOM-killed the
 # worker on load -- once even froze raven hard enough to need a physical reboot. Root

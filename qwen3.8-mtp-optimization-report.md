@@ -80,7 +80,7 @@
 ## 4. Qwen3.8-27B 서빙 가이드 및 실행 커맨드
 
 ### 4.1 적용된 레시피
-* `recipes/qwen3.8-27b-fp8.yaml` (`num_speculative_tokens: 4` 기본 설정)
+* `custom_recipes/qwen3.8-27b-fp8.yaml` (`num_speculative_tokens: 4` 기본 설정)
 
 ### 4.2 실행 커맨드
 

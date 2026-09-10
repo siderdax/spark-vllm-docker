@@ -11,7 +11,7 @@ pre-configured settings. It handles:
 - Both solo (single node) and cluster deployments
 
 Usage:
-    ./run-recipe.py recipes/deepseek-v4-flash-0731.yaml
+    ./run-recipe.py custom_recipes/deepseek-v4-flash-0731.yaml
     ./run-recipe.py glm-4.7-flash-awq --port 9000 --solo
     ./run-recipe.py minimax-m2-awq --setup  # Full setup: build + download + run
     ./run-recipe.py --list

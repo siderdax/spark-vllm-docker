@@ -292,7 +292,7 @@ Pass the match unit after the recipe runner's `--` separator:
 ```bash
 ./run-recipe.sh \
   --apply-mod mods/fix-eagle-fine-prefix \
-  --solo recipes/qwen3.6-35b-a3b-nvfp4.yaml \
+  --solo custom_recipes/qwen3.6-35b-a3b-nvfp4.yaml \
   -- --prefix-match-unit 134
 ```
 

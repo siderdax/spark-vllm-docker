@@ -18,4 +18,4 @@
 # to {"method":"mtp","num_speculative_tokens":2} and re-run.
 cd "$(dirname "${BASH_SOURCE[0]}")"
 # Offline flags keep startup from doing Hub lookups on both nodes.
-exec ./run-recipe.sh deepseek-v4-flash-0731 --env HF_HUB_OFFLINE=1 --env TRANSFORMERS_OFFLINE=1 "$@"
+exec ./run-recipe.sh custom_recipes/deepseek-v4-flash-0731 --env HF_HUB_OFFLINE=1 --env TRANSFORMERS_OFFLINE=1 "$@"

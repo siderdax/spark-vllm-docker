@@ -18,7 +18,7 @@ set -euo pipefail
 # Diffed clean against this repo's own pulled vllm/vllm-openai:qwen38-flash-next
 # stock ple_layer.py (~12 lines changed in a 1244-line file) before adoption.
 # Adapted from github.com/x00byte/Qwen3.8-Flash-Dual-Spark-Recipe (Apache 2.0,
-# derived from vLLM). See recipes/qwen3.8-flash-next-nvfp4-radixark.yaml for context.
+# derived from vLLM). See custom_recipes/qwen3.8-flash-next-nvfp4-radixark.yaml for context.
 #
 # EXTENDED 2026-09-09 while evaluating nvidia/Qwen3.8-Flash-Next-NVFP4 (see
 # project memory qwen38-flash-next-nvidia-quant-attempt): that checkpoint

@@ -4,7 +4,7 @@
 #   1. Inferact/Qwen3.8-Flash-Next-NVFP4 -- OOM/froze the node. See project
 #      memory qwen38-flash-next-oom-blocker.
 #   2. RadixArk/Qwen3.8-Flash-Next-NVFP4 -- the fix, still a verified-working
-#      option: recipes/qwen3.8-flash-next-nvfp4-radixark.yaml. See project
+#      option: custom_recipes/qwen3.8-flash-next-nvfp4-radixark.yaml. See project
 #      memory qwen38-flash-next-radixark-success.
 #   3. nvidia/Qwen3.8-Flash-Next-NVFP4 on the frozen `vllm/vllm-openai:
 #      qwen38-flash-next` Docker Hub tag (built 2026-08-26) -- base MoE+PLE

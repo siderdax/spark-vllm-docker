@@ -7,7 +7,7 @@
 # so splitting can still help decode latency even though it doesn't need the
 # extra memory).
 # Chosen over hypothetical NVFP4 for quality, same rationale as Qwen3.6-27B-FP8:
-# recipes/qwen3.6-27b-fp8.yaml
+# custom_recipes/qwen3.6-27b-fp8.yaml
 #
 # Chat template: Qwen3.8's shipped chat_template.jinja is the same vintage/bugs
 # as the pre-fix Qwen3.6 template (no developer-role support, tool_call argument
@@ -24,7 +24,7 @@
 # MTP: the checkpoint ships a trained MTP draft head (mtp.safetensors). Not
 # enabled by default here for stability (this repo has no prior track record
 # running Qwen's native `mtp` speculative method, only the separate DFlash
-# draft model used by recipes/qwen3.6-35b-a3b-fp8-dflash.yaml). To try it:
+# draft model used by custom_recipes/qwen3.6-35b-a3b-fp8-dflash.yaml). To try it:
 #   --speculative-config '{"method":"mtp","num_speculative_tokens":3}'
 #
 # Verified against the official vLLM recipe: https://recipes.vllm.ai/Qwen/Qwen3.8-27B

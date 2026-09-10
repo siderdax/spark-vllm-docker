@@ -7,4 +7,4 @@
 cd "$(dirname "${BASH_SOURCE[0]}")"
 # quaker (worker node) has no internet, so HF Hub lookups die on DNS failure.
 # These must be passed as container-level -e to reach the worker processes (recipe env: alone is not enough).
-exec ./run-recipe.sh deepseek-v4-flash --env HF_HUB_OFFLINE=1 --env TRANSFORMERS_OFFLINE=1 "$@"
+exec ./run-recipe.sh custom_recipes/deepseek-v4-flash --env HF_HUB_OFFLINE=1 --env TRANSFORMERS_OFFLINE=1 "$@"

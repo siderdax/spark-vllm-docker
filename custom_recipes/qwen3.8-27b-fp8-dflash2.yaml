@@ -1,5 +1,5 @@
 # Recipe: Qwen3.8-27B-FP8 + DFlash2 speculative decoding
-# Sibling of recipes/qwen3.8-27b-fp8.yaml (MTP-4 default) and
+# Sibling of custom_recipes/qwen3.8-27b-fp8.yaml (MTP-4 default) and
 # recipes/qwen3.8-27b-dflash2.yaml (NVFP4 + DFlash2), built for a 4-way
 # NVFP4/FP8 x MTP-5/DFlash2 comparison requested 2026-08-31. Draft model
 # is the same incoai/Qwen3.8-27B-DFlash2 used for the NVFP4 pairing --
@@ -11,7 +11,7 @@
 #
 # VERIFIED 2026-08-31: 9/9 context-bench.py quality passes. Decode 31.55 t/s
 # at pp2048, 28.25 t/s at pp16384 -- a big jump over the FP8+MTP-5 sibling
-# (18.9 t/s flat, recipes/qwen3.8-27b-fp8-mtp5.yaml) and roughly on par with
+# (18.9 t/s flat, custom_recipes/qwen3.8-27b-fp8-mtp5.yaml) and roughly on par with
 # NVFP4+MTP-5, though still behind the overall winner,
 # recipes/qwen3.8-27b-dflash2.yaml (NVFP4+DFlash2, 36.62 t/s at pp16384).
 # See project memory qwen38-27b-dflash2-recipe for the full table.
