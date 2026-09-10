@@ -1,5 +1,5 @@
 # Recipe: Qwen3.8-27B-NVFP4 (MTP-5)
-# Sibling of recipes/qwen3.8-27b-nvfp4-dflash2.yaml (the recommended default,
+# Sibling of recipes/qwen3.8-27b-nvfp4-dflash2-nvidia.yaml (the recommended default,
 # DFlash2 spec decode) for a native-MTP comparison. num_speculative_tokens=5,
 # from a 4-way NVFP4/FP8 x MTP-5/DFlash2 comparison run 2026-08-31 against
 # unsloth/Qwen3.8-27B-NVFP4 as the target checkpoint (see project memory

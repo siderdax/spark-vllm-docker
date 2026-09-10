@@ -31,7 +31,7 @@
 # --attention-backend B12X_MLA_SPARSE, and the matching env vars below. The GB10
 # hardware override on the official page also folds attention_backend into the
 # speculative-config JSON itself and drops draft tokens to 5 (vs. 7 elsewhere) with
-# probabilistic sampling — mirrored below. NOT YET LAUNCH-VERIFIED on raven+quaker.
+# probabilistic sampling — mirrored below.
 #
 # CAUTION: while researching this, found several GitHub repos and an issue on our
 # own upstream (eugr/spark-vllm-docker #331) with names/text suspiciously tailored
@@ -39,6 +39,34 @@
 # third-party "patch" (tonyd2wild). Did not use any of it — has the hallmarks of
 # SEO/supply-chain bait aimed at AI coding agents. Do not pull in code from those
 # repos; if the DSpark weight loading looks off, debug from vLLM upstream directly.
+#
+# UPDATE 2026-09-10: eugr/spark-vllm-b12x:latest is a rolling tag, and it was
+# rebuilt 2026-09-09 (docker.io digest sha256:4f5482a2..., vllm.__version__
+# 0.1.dev20606+gaba94d396.d20260909) from local-inference-lab/vllm's
+# dev/jovian-judgement branch -- confirmed via a shallow clone + `git merge-base
+# --is-ancestor` that commit aba94d396 is on dev/jovian-judgement and NOT on
+# dev/infernal-invocation (the branch our 2026-08-14 fix was built against).
+# Upstream's own recipe (eugr/spark-vllm-docker@e91bc76, "Switch to a new b12x
+# branch") switched --attention-backend from B12X_MLA_SPARSE to plain B12X in
+# lockstep with this branch bump -- almost certainly the fix for the
+# num_tokens > 64 sparse-MLA decode assert this recipe hit on 2026-08-10 (that
+# assert came from the FlashInfer sparse-MLA decode path underlying
+# B12X_MLA_SPARSE specifically). Also picked up two paired tuning changes from
+# the same upstream commit: VLLM_USE_MEGA_AOT_ARTIFACT -1 -> 1, and
+# max-cudagraph-capture-size 64 -> 48. Kept our own num_speculative_tokens=7
+# (vs upstream's 5), max_model_len=500000 (vs upstream's "auto"),
+# reasoning_effort=max, top_p=0.95 override, and --distributed-executor-backend
+# ray -- those were deliberate choices for this fork, not artifacts of the old
+# branch.
+#
+# VERIFIED 2026-09-10 on raven+quaker: server starts clean, DSpark engages on
+# the very first draft call (no num_tokens > 64 assert) --
+# "SpecDecoding metrics: Mean acceptance length: 3.73, Current speculative
+# depth: 7, Avg Draft acceptance rate: 39.0%". context-bench.py 9/9
+# (8K/32K/100K tokens x 3 depths). llama-benchy --pp 2048 16384 --tg 256
+# --exact-tg --runs 3: decode 39.26 t/s at pp2048, 38.49 t/s at pp16384 --
+# beats the pre-DSpark mtp/2 baseline (35.5 tok/s code, 37.0 tok/s prose,
+# recorded 2026-08-10) despite the heavier DSpark drafter.
 
 recipe_version: "1"
 name: DeepSeek-V4-Flash-0731
@@ -78,6 +106,10 @@ defaults:
   # DSpark block drafter: must be >= dspark_block_size (5). Matches the official
   # GB10 override (elsewhere on the page it defaults to 7).
   num_speculative_tokens: 7
+  # Paired with the dev/jovian-judgement branch bump (see header) -- upstream
+  # dropped this from 64 to 48 in the same commit that switched attention
+  # backends.
+  max_cudagraph_capture_size: 48
 
 # Environment variables
 env:
@@ -89,7 +121,7 @@ env:
   PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
   CUTE_DSL_ARCH: "sm_121a"
   VLLM_USE_AOT_COMPILE: "1"
-  VLLM_USE_MEGA_AOT_ARTIFACT: "-1"
+  VLLM_USE_MEGA_AOT_ARTIFACT: "1"
   VLLM_MEMORY_PROFILE_INCLUDE_ATTN: "1"
   VLLM_USE_B12X_WO_PROJECTION: "1"
   VLLM_USE_B12X_MHC: "1"
@@ -117,7 +149,7 @@ command: |
       --max-num-batched-tokens {max_num_batched_tokens} \
       --gpu-memory-utilization {gpu_memory_utilization} \
       --enable-prefix-caching \
-      --speculative-config '{{"method":"dspark","num_speculative_tokens":{num_speculative_tokens},"draft_sample_method":"probabilistic","attention_backend":"B12X_MLA_SPARSE"}}' \
+      --speculative-config '{{"method":"dspark","num_speculative_tokens":{num_speculative_tokens},"draft_sample_method":"probabilistic","attention_backend":"B12X"}}' \
       --tokenizer-mode deepseek_v4 \
       --distributed-executor-backend ray \
       --tool-call-parser deepseek_v4 \
@@ -130,6 +162,6 @@ command: |
       --load-format instanttensor \
       --moe-backend b12x \
       --linear-backend b12x \
-      --attention-backend B12X_MLA_SPARSE \
-      --max-cudagraph-capture-size 64 \
+      --attention-backend B12X \
+      --max-cudagraph-capture-size {max_cudagraph_capture_size} \
       --compilation-config '{{"cudagraph_mode":"FULL_AND_PIECEWISE","custom_ops":["all"]}}'
