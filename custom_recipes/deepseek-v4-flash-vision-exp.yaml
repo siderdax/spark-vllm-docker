@@ -1,0 +1,96 @@
+# Recipe: DeepSeek V4 Flash Vision Exp (DSpark) for raven+quaker
+#
+# Derived from upstream recipes/deepseek-v4-flash-vision-exp.yaml and our
+# custom_recipes/deepseek-v4-flash-0731.yaml.
+#
+# VERIFIED 2026-10-01 on raven+quaker (eugr/spark-vllm-b12x digest e241b798):
+# context-bench 9/9 (8K/32K/100K x 3 depths); llama-benchy decode 37.20 t/s (pp2048) /
+# 39.08 t/s (pp16384), prefill 2078 / 2325 t/s -- vs 0731: decode similar-or-better,
+# prefill 3-8% lower. KV cache 812,239 tokens (1.62x at 500K; 0731: 699,629). Image
+# input works (red background / blue square described correctly via chat completions).
+#
+# Differences from upstream:
+#   * container: eugr/spark-vllm-b12x:latest directly (same as our 0731 recipe), instead
+#     of vllm-node-b12x + build_args --exp-b12x. Pull it on every node first.
+#   * max_model_len 500000 (upstream "auto"), VLLM_ALLOW_LONG_MAX_MODEL_LEN=1,
+#     --enable-prefix-caching, ray executor backend, reasoning_effort=max and the
+#     top_p 0.95 override: our 0731 conventions.
+# Kept from upstream: dspark with 6 draft tokens (0731 uses 7), --load-format b12x,
+# max_cudagraph_capture_size 48.
+#
+# Model cache was copied from fregata (/mnt/HDD2/models), not downloaded. Launch with
+# ./run-dsv4f-vision-exp.sh --env HF_HUB_OFFLINE=1 --env TRANSFORMERS_OFFLINE=1
+
+recipe_version: "1"
+name: DeepSeek-V4-Flash-Vision-Exp
+description: vLLM serving deepseek-ai/DeepSeek-V4-Flash-Vision-Exp with DSpark on a DGX Spark cluster
+
+model: deepseek-ai/DeepSeek-V4-Flash-Vision-Exp
+
+container: eugr/spark-vllm-b12x:latest
+
+cluster_only: true
+
+mods: []
+
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  tensor_parallel: 2
+  gpu_memory_utilization: 0.85
+  max_model_len: 500000
+  block_size: 256
+  max_num_seqs: 8
+  max_num_batched_tokens: 8192
+  max_cudagraph_capture_size: 48
+  num_speculative_tokens: 6
+
+env:
+  DG_JIT_USE_NVRTC: "0"
+  VLLM_ALLOW_LONG_MAX_MODEL_LEN: "1"
+  VLLM_USE_BREAKABLE_CUDAGRAPH: "0"
+  VLLM_USE_FLASHINFER_SAMPLER: "1"
+  PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
+  CUTE_DSL_ARCH: "sm_121a"
+  VLLM_USE_AOT_COMPILE: "1"
+  VLLM_USE_MEGA_AOT_ARTIFACT: "1"
+  VLLM_MEMORY_PROFILE_INCLUDE_ATTN: "1"
+  VLLM_USE_B12X_WO_PROJECTION: "1"
+  VLLM_USE_B12X_MHC: "1"
+  VLLM_USE_B12X_FP8_GEMM: "1"
+  VLLM_USE_B12X_MOE: "1"
+  VLLM_USE_B12X_SPARSE_INDEXER: "1"
+  VLLM_USE_V2_MODEL_RUNNER: "1"
+  VLLM_MOE_SKIP_PADDING: "0"
+  B12X_MLA_SM120_UNIFIED: "1"
+  B12X_MOE_FORCE_A8: "1"
+
+command: |
+  vllm serve deepseek-ai/DeepSeek-V4-Flash-Vision-Exp \
+      --host {host} \
+      --port {port} \
+      --trust-remote-code \
+      --tensor-parallel-size {tensor_parallel} \
+      --kv-cache-dtype fp8 \
+      --block-size {block_size} \
+      --max-model-len {max_model_len} \
+      --max-num-seqs {max_num_seqs} \
+      --max-num-batched-tokens {max_num_batched_tokens} \
+      --gpu-memory-utilization {gpu_memory_utilization} \
+      --enable-prefix-caching \
+      --speculative-config '{{"method":"dspark","num_speculative_tokens":{num_speculative_tokens},"draft_sample_method":"probabilistic","attention_backend":"B12X"}}' \
+      --tokenizer-mode deepseek_v4 \
+      --distributed-executor-backend ray \
+      --tool-call-parser deepseek_v4 \
+      --enable-auto-tool-choice \
+      --reasoning-parser deepseek_v4 \
+      --reasoning-config '{{"reasoning_parser":"deepseek_v4","reasoning_start_str":"","reasoning_end_str":""}}' \
+      --default-chat-template-kwargs.thinking=true \
+      --default-chat-template-kwargs.reasoning_effort=max \
+      --override-generation-config '{{"temperature": 1.0, "top_p": 0.95}}' \
+      --load-format b12x \
+      --moe-backend b12x \
+      --linear-backend b12x \
+      --attention-backend B12X \
+      --max-cudagraph-capture-size {max_cudagraph_capture_size} \
+      --compilation-config '{{"cudagraph_mode":"FULL_AND_PIECEWISE","custom_ops":["all"]}}'

@@ -65,6 +65,11 @@
 # tag (moved to reserved_runs/run-qwen3.8-flash-next-radixark.yaml as
 # fallback). See project memory qwen38-flash-next-nvidia-quant-attempt.
 
+# RE-VERIFIED 2026-10-01 on the rebuilt `vllm-node` (vLLM 0.30.1rc1.dev502, includes
+# upstream's SWA block-size patch): context-bench 9/9, llama-benchy decode 33.4 / 31.7 t/s
+# (pp2048 / pp16384), prefill 2776 / 3427 t/s; same as on the 09-09 image (32.5 / 33.0).
+# KV cache 1,829,430 tokens (was 2,426,226). Model cache restored from fregata.
+
 recipe_version: "1"
 name: Qwen3.8-Flash-Next-NVFP4
 description: vLLM serving nvidia/Qwen3.8-Flash-Next-NVFP4 on 2x DGX Spark (TP2) with MTP-4, on a from-main vllm-node build -- active default

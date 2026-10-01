@@ -60,6 +60,16 @@ recipe_version: "1"
 name: Qwen3.8-27B-DFlash2
 description: vLLM serving nvidia/Qwen3.8-27B-NVFP4 on DGX Spark (tp2) with DFlash2 spec decode
 
+# UPDATE 2026-10-01: now runs on the rebuilt `vllm-node` (built as `vllm-node-new`, then
+# retagged to `vllm-node` on both nodes; vLLM main with
+# upstream's SWA block-size patch; `./build-and-copy.sh -t vllm-node-new
+# --rebuild-vllm --copy-to`) with --async-scheduling. context-bench 9/9;
+# vs the 09-09 `vllm-node`: KV 3,006,859 -> 3,571,267 tokens, prefill 2575 -> 3792
+# t/s (pp2048) and 3084 -> 3413 t/s (pp16384), decode unchanged (~39 / ~38 t/s,
+# within the +/-3 spread). --enable-chunked-prefill is already the default, so it
+# is not passed. Sibling recipes use the same `vllm-node` image now (Flash-Next re-verified
+# on it 9/9, decode ~33 t/s, same as before).
+
 # HuggingFace model
 model: nvidia/Qwen3.8-27B-NVFP4
 
@@ -106,4 +116,5 @@ command: |
     --speculative-config '{{"method":"dflash","model":"incoai/Qwen3.8-27B-DFlash2","num_speculative_tokens":7}}' \
     --chat-template fixed_chat_template.jinja \
     -tp {tensor_parallel} \
+    --async-scheduling \
     --distributed-executor-backend ray
