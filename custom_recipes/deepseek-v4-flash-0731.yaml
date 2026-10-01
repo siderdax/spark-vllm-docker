@@ -67,6 +67,16 @@
 # --exact-tg --runs 3: decode 39.26 t/s at pp2048, 38.49 t/s at pp16384 --
 # beats the pre-DSpark mtp/2 baseline (35.5 tok/s code, 37.0 tok/s prose,
 # recorded 2026-08-10) despite the heavier DSpark drafter.
+#
+# UPDATE 2026-10-01: --load-format instanttensor -> b12x (follows upstream
+# "switch deepseek to b12x loader"), and re-pulled eugr/spark-vllm-b12x:latest on
+# both nodes (digest sha256:e241b798..., built 2026-09-30, vllm 0.1.dev21553+gab86b7073).
+# Verified on raven+quaker: starts clean, context-bench.py 9/9 (8K/32K/100K x 3
+# depths), llama-benchy decode 36.88 t/s (pp2048) / 37.18 t/s (pp16384), prefill
+# 2138 / 2536 t/s, DSpark mean acceptance length 2.7-3.5. Decode is ~5% below the
+# 09-10 numbers (within the +/-3.4 run-to-run spread, loader vs image effect not
+# separated). KV cache 699,629 tokens (1.40x at 500K) vs 912,401 on the old image
+# + instanttensor loader; cold-start with the new image took ~12 min (compile).
 
 recipe_version: "1"
 name: DeepSeek-V4-Flash-0731
@@ -160,7 +170,7 @@ command: |
       --default-chat-template-kwargs.thinking=true \
       --default-chat-template-kwargs.reasoning_effort=max \
       --override-generation-config '{{"temperature": 1.0, "top_p": 0.95}}' \
-      --load-format instanttensor \
+      --load-format b12x \
       --moe-backend b12x \
       --linear-backend b12x \
       --attention-backend B12X \
