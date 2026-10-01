@@ -13,27 +13,28 @@ For build instructions, the mods system, `launch-cluster.sh`/`run-recipe.py` usa
 
 ## Fork-specific recipes and launch scripts
 
-These recipes and `run-*.sh` wrappers exist only in this fork (not upstream):
+These recipes and `run-*.sh` wrappers exist only in this fork (not upstream). Only the models below are in active use. Images: the Qwen3.8 recipes use the local `vllm-node`, the DeepSeek ones `eugr/spark-vllm-b12x:latest`, GLM `radixark/vllm-glm53-flash:sm121-v11-dflash2`. Every wrapper sets `HF_HUB_OFFLINE=1`, so the model must already be in the HF cache on both nodes. Backups of models and images live on fregata (`/mnt/HDD2/models`, `/mnt/HDD2/docker_images`); the GLM-5.3 and DeepSeek-V4-Flash-0731 caches were removed from raven/quaker and must be copied back before use.
 
 | Model | Recipe(s) | Wrappers |
 |---|---|---|
-| Qwen3.6-27B-FP8 | `custom_recipes/qwen3.6-27b-fp8.yaml` | `run-qwen3.6-27b.sh` / `-solo` / `-pp2` |
-| Qwen3.6-27B-NVFP4 | `custom_recipes/qwen3.6-27b-nvfp4.yaml` | `run-qwen3.6-27b-nvfp4.sh` / `-solo` / `-pp2` |
-| Qwen3.6-35B-A3B | `recipes/qwen3.6-35b-a3b-*.yaml` | `run-qwen3.6-35b.sh` / `-solo` / `-pp2` |
 | Qwen3.8-27B-NVFP4 + DFlash2 | `custom_recipes/qwen3.8-27b-nvfp4-dflash2-nvidia.yaml` | `run-qwen3.8-27b-dflash2.sh` |
-| Qwen3.5-122B-NVFP4 | `custom_recipes/qwen3.5-122b-nvfp4.yaml` | `run-qwen3.5-122b-nvfp4.sh` / `-solo` / `-pp2` |
-| DeepSeek-V4-Flash | `custom_recipes/deepseek-v4-flash.yaml` | `run-dsv4f.sh` |
 | DeepSeek-V4-Flash-0731 | `custom_recipes/deepseek-v4-flash-0731.yaml` | `run-dsv4f-0731.sh` |
 | DeepSeek-V4-Flash-Vision-Exp | `custom_recipes/deepseek-v4-flash-vision-exp.yaml` | `run-dsv4f-vision-exp.sh` |
-| MiniMax-M2.7-NVFP4 | `custom_recipes/minimax-m2.7-nvfp4.yaml` | `run-minimax-m2.7.sh` |
 | GLM-5.3-Flash-NVFP4 + DFlash2 | `custom_recipes/glm5.3-flash-dflash2.yaml` | `run-glm5.3-flash-dflash2.sh` |
 | Qwen3.8-Flash-Next-NVFP4 + MTP-4 | `custom_recipes/qwen3.8-flash-next-nvfp4.yaml` | `run-qwen3.8-flash-next.sh` |
 
 ```bash
-./run-qwen3.8-27b.sh          # tp2 cluster (raven+quaker), the recipe default
-./run-qwen3.8-27b-solo.sh     # single node
-./run-qwen3.8-27b-pp2.sh      # pipeline-parallel across both nodes
+./run-qwen3.8-27b-dflash2.sh      # Qwen3.8-27B-NVFP4 + DFlash2, tp2 cluster (raven+quaker)
+./run-qwen3.8-flash-next.sh       # Qwen3.8-Flash-Next-NVFP4 + MTP-4, tp2 cluster
+./run-dsv4f-0731.sh               # DeepSeek-V4-Flash-0731 + DSpark
+./run-dsv4f-vision-exp.sh         # DeepSeek-V4-Flash-Vision-Exp + DSpark
+./run-glm5.3-flash-dflash2.sh     # GLM-5.3-Flash-NVFP4 + DFlash2
 ```
+
+The wrappers only launch the server; they do not verify it. Check a fresh image or recipe with
+`./context-bench.py` and `llama-benchy` (see below). Other recipes in `custom_recipes/` (Qwen3.5/3.6,
+MiniMax, DeepSeek-V4-Flash) have no wrapper any more: run them with
+`./run-recipe.sh custom_recipes/<name>.yaml`. They were not re-tested on the 2026-10-01 `vllm-node`.
 
 Every wrapper forwards extra args straight to `run-recipe.sh`/`run-recipe.py` (`--api-key`, `--port`, overrides, etc.) — see the original repo's README for the full flag reference.
 
