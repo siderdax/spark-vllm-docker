@@ -994,7 +994,7 @@ Examples:
         "--no-cache-dirs",
         action="store_true",
         dest="no_cache_dirs",
-        help="Do not mount ~/.cache/vllm, ~/.cache/flashinfer, ~/.triton",
+        help="Do not mount ~/.cache/vllm, ~/.cache/flashinfer, ~/.cache/b12x, ~/.triton, ~/.tilelang",
     )
     launch_group.add_argument(
         "--keep-entrypoint",
@@ -1006,7 +1006,7 @@ Examples:
         "--earlyoom",
         action="store_true",
         dest="earlyoom",
-        help="Run earlyoom as the container foreground process instead of sleep infinity",
+        help="Run earlyoom as the container foreground process (install it with apt-get if missing)",
     )
     launch_group.add_argument(
         "--earlyoom-args",

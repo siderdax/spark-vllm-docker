@@ -34,7 +34,7 @@ VLLM_SOURCE_STAGING_DIR=""
 VLLM_SOURCE_CONTEXT=""
 EXP_B12X=false
 EXP_B12X_VLLM_REPO="https://github.com/local-inference-lab/vllm"
-EXP_B12X_VLLM_REF="dev/jovian-judgement"
+EXP_B12X_VLLM_REF="dev/karmic-kraken"
 B12X_PACKAGE_REPO="https://github.com/lukealonso/b12x.git"
 B12X_PACKAGE_REF="master"
 EXP_B12X_TORCH_VERSION="2.13.0"
@@ -43,6 +43,7 @@ EXP_B12X_TORCHAUDIO_VERSION="2.11.0"
 B12X_REPO=""
 B12X_REF=""
 B12X_CACHEBUST=""
+B12X_FROM_PYPI=0
 FLASHINFER_REF="main"
 FLASHINFER_REF_SET=false
 TMP_IMAGE=""
@@ -118,6 +119,7 @@ generate_build_metadata() {
     local b12x_repo="${13}"
     local b12x_ref="${14}"
     local cutlass_dsl_version="${15}"
+    local b12x_from_pypi="${16:-0}"
 
     local base_image
     base_image=$(grep -m1 '^FROM .* AS runner' "$dockerfile" | awk '{print $2}')
@@ -139,6 +141,7 @@ build_args:
   cutlass_dsl_version: "${cutlass_dsl_version}"
   b12x_repo: "${b12x_repo}"
   b12x_ref: "${b12x_ref}"
+  b12x_from_pypi: ${b12x_from_pypi}
   transformers_5: ${transformers_5}
   exp_mxfp4: ${exp_mxfp4}
   vllm_prs: "${vllm_prs}"
@@ -433,6 +436,13 @@ if match:
         fi
 
         local NEED_DOWNLOAD=false
+        # An incomplete cache must not win the commit/timestamp shortcuts. In
+        # particular, a repaired release may add providers without changing the
+        # base wheel filenames or the upstream commit.
+        if [ "$PREFIX" = "flashinfer" ] && \
+           ! validate_flashinfer_wheel_set "$WHEELS_DIR" >/dev/null 2>&1; then
+            NEED_DOWNLOAD=true
+        fi
         local RELEASE_ASSETS_PRESENT=true
         local URL NAME
         while IFS=' ' read -r URL NAME; do
@@ -444,7 +454,8 @@ if match:
         done <<< "$RELEASE_ENTRIES"
 
         if [ "$RELEASE_ASSETS_PRESENT" = false ]; then
-            if local_wheels_are_newer_than_release "$WHEELS_DIR" "$PREFIX" "$RELEASE_ENTRIES"; then
+            if [ "$NEED_DOWNLOAD" = false ] && \
+               local_wheels_are_newer_than_release "$WHEELS_DIR" "$PREFIX" "$RELEASE_ENTRIES"; then
                 echo "Local $PREFIX wheels are newer than release '$TAG' — skipping download."
                 return 0
             fi
@@ -494,28 +505,42 @@ if match:
 
     local URL NAME TMP_WHL
     local DOWNLOADED=()
+    local DOWNLOAD_FAILED=false
     while IFS=' ' read -r URL NAME; do
         [ -z "$URL" ] && continue
         echo "Downloading $NAME..."
         TMP_WHL=$(mktemp "$WHEELS_DIR/${NAME}.XXXXXX")
-        if curl -L --progress-bar --connect-timeout 30 "$URL" -o "$TMP_WHL"; then
+        if curl -fL --progress-bar --connect-timeout 30 "$URL" -o "$TMP_WHL"; then
             mv "$TMP_WHL" "$WHEELS_DIR/$NAME"
             DOWNLOADED+=("$WHEELS_DIR/$NAME")
         else
             rm -f "$TMP_WHL"
-            echo "Failed to download $NAME — removing other downloaded files."
-            for f in "${DOWNLOADED[@]}"; do rm -f "$f"; done
-            if compgen -G "$DL_BACKUP/${PREFIX}*.whl" > /dev/null 2>&1; then
-                echo "Restoring previous $PREFIX wheels..."
-                mv "$DL_BACKUP/${PREFIX}"*.whl "$WHEELS_DIR/"
-            fi
-            if compgen -G "$DL_BACKUP/.${PREFIX}*" > /dev/null 2>&1; then
-                mv "$DL_BACKUP/.${PREFIX}"* "$WHEELS_DIR/"
-            fi
-            rm -rf "$DL_BACKUP"
-            return 1
+            echo "Failed to download $NAME."
+            DOWNLOAD_FAILED=true
+            break
         fi
     done <<< "$DOWNLOAD_ENTRIES"
+
+    # A successful transfer can still be an incomplete published wheel set.
+    # Keep the previous cache and provenance until provider validation passes.
+    if [ "$DOWNLOAD_FAILED" = false ] && [ "$PREFIX" = "flashinfer" ] && \
+       ! validate_flashinfer_wheel_set "$WHEELS_DIR"; then
+        echo "Error: FlashInfer release '$TAG' contains an incomplete or invalid wheel set."
+        echo "       The release must include every provider required by its JIT-cache wheel."
+        DOWNLOAD_FAILED=true
+    fi
+    if [ "$DOWNLOAD_FAILED" = true ]; then
+        for f in "${DOWNLOADED[@]}"; do rm -f "$f"; done
+        if compgen -G "$DL_BACKUP/${PREFIX}*.whl" > /dev/null 2>&1; then
+            echo "Restoring previous $PREFIX wheels..."
+            mv "$DL_BACKUP/${PREFIX}"*.whl "$WHEELS_DIR/"
+        fi
+        if compgen -G "$DL_BACKUP/.${PREFIX}*" > /dev/null 2>&1; then
+            mv "$DL_BACKUP/.${PREFIX}"* "$WHEELS_DIR/"
+        fi
+        rm -rf "$DL_BACKUP"
+        return 1
+    fi
 
     rm -rf "$DL_BACKUP"
     if [ -n "$REMOTE_COMMIT" ]; then
@@ -525,18 +550,28 @@ if match:
     return 0
 }
 
+validate_flashinfer_wheel_set() {
+    local wheels_dir="$1"
+    local cubin=("$wheels_dir"/flashinfer_cubin-*.whl)
+    local jit=("$wheels_dir"/flashinfer_jit_cache-*.whl)
+    local python=("$wheels_dir"/flashinfer_python-*.whl)
+
+    if [ "${#cubin[@]}" -ne 1 ] || [ ! -f "${cubin[0]}" ] || \
+       [ "${#jit[@]}" -ne 1 ] || [ ! -f "${jit[0]}" ] || \
+       [ "${#python[@]}" -ne 1 ] || [ ! -f "${python[0]}" ]; then
+        echo "Error: FlashInfer profile $wheels_dir does not contain exactly one complete wheel set."
+        return 1
+    fi
+    python3 ./docker/validate_flashinfer_wheels.py "${jit[0]}" "$GPU_ARCH_LIST"
+}
+
 validate_exported_wheel_set() {
     local component="$1"
     local wheels_dir="$2"
 
     if [ "$component" = "flashinfer" ]; then
-        local cubin=("$wheels_dir"/flashinfer_cubin-*.whl)
-        local jit=("$wheels_dir"/flashinfer_jit_cache-*.whl)
-        local python=("$wheels_dir"/flashinfer_python-*.whl)
-        if [ "${#cubin[@]}" -ne 1 ] || [ ! -f "${cubin[0]}" ] || \
-           [ "${#jit[@]}" -ne 1 ] || [ ! -f "${jit[0]}" ] || \
-           [ "${#python[@]}" -ne 1 ] || [ ! -f "${python[0]}" ] || \
-           [ ! -s "$wheels_dir/.flashinfer-commit" ] || \
+        validate_flashinfer_wheel_set "$wheels_dir" || return 1
+        if [ ! -s "$wheels_dir/.flashinfer-commit" ] || \
            [ ! -s "$wheels_dir/.flashinfer-arch" ]; then
             echo "Error: FlashInfer export did not produce one complete wheel set with provenance markers."
             return 1
@@ -556,17 +591,9 @@ validate_exported_wheel_set() {
 validate_runner_wheel_inputs() {
     local flashinfer_dir="$1"
     local vllm_dir="$2"
-    local cubin=("$flashinfer_dir"/flashinfer_cubin-*.whl)
-    local jit=("$flashinfer_dir"/flashinfer_jit_cache-*.whl)
-    local python=("$flashinfer_dir"/flashinfer_python-*.whl)
     local vllm=("$vllm_dir"/vllm-*.whl)
 
-    if [ "${#cubin[@]}" -ne 1 ] || [ ! -f "${cubin[0]}" ] || \
-       [ "${#jit[@]}" -ne 1 ] || [ ! -f "${jit[0]}" ] || \
-       [ "${#python[@]}" -ne 1 ] || [ ! -f "${python[0]}" ]; then
-        echo "Error: FlashInfer profile $flashinfer_dir does not contain exactly one complete wheel set."
-        return 1
-    fi
+    validate_flashinfer_wheel_set "$flashinfer_dir" || return 1
     if [ "${#vllm[@]}" -ne 1 ] || [ ! -f "${vllm[0]}" ]; then
         echo "Error: vLLM profile $vllm_dir does not contain exactly one wheel."
         return 1
@@ -857,15 +884,20 @@ NORMALIZED_DEFAULT_VLLM_REPO="${DEFAULT_VLLM_REPO%/}"
 NORMALIZED_DEFAULT_VLLM_REPO="${NORMALIZED_DEFAULT_VLLM_REPO%.git}"
 if [ "$NORMALIZED_VLLM_REPO" = "$NORMALIZED_DEFAULT_VLLM_REPO" ] || \
    [ "$NORMALIZED_VLLM_REPO" = "$EXP_B12X_VLLM_REPO" ]; then
-    B12X_REPO="$B12X_PACKAGE_REPO"
-    B12X_REF="$B12X_PACKAGE_REF"
     B12X_CACHEBUST="$(date +%s)"
     TORCH_BASE_VERSION="${TORCH_VERSION%%+*}"
     if [ "$(printf '%s\n' "2.12.0" "$TORCH_BASE_VERSION" | sort -V | head -n1)" != "2.12.0" ]; then
         echo "Error: ${NORMALIZED_VLLM_REPO} requires --torch-version 2.12.0 or newer for B12X (got ${TORCH_VERSION})."
         exit 1
     fi
-    echo "Building B12X from ${B12X_REPO} ref ${B12X_REF} for ${NORMALIZED_VLLM_REPO} ref ${VLLM_REF}."
+    if [ "$NORMALIZED_VLLM_REPO" = "$EXP_B12X_VLLM_REPO" ]; then
+        B12X_REPO="$B12X_PACKAGE_REPO"
+        B12X_REF="$B12X_PACKAGE_REF"
+        echo "Building B12X from ${B12X_REPO} ref ${B12X_REF} for ${NORMALIZED_VLLM_REPO} ref ${VLLM_REF}."
+    else
+        B12X_FROM_PYPI=1
+        echo "Installing latest B12X from PyPI for ${NORMALIZED_VLLM_REPO} ref ${VLLM_REF}."
+    fi
 fi
 
 # Source autodiscover.sh to load .env file
@@ -1058,7 +1090,8 @@ if [[ "$CLEANUP_MODE" == "true" ]]; then
         [ -d "$cache_dir" ] || continue
         rm -f "$cache_dir"/*.whl \
             "$cache_dir"/.*-commit \
-            "$cache_dir"/.*-arch
+            "$cache_dir"/.*-arch \
+            "$cache_dir"/.vllm-structured-server.py
         echo "Cleaned $cache_dir"
     done
     echo "Cleanup complete."
@@ -1203,6 +1236,12 @@ if [ "$NO_BUILD" = false ]; then
             fi
         fi
 
+        # Reject incomplete cached/downloaded FlashInfer sets before compiling
+        # vLLM. Exported sets are also checked before replacing the old cache.
+        if ! validate_flashinfer_wheel_set "$FLASHINFER_WHEELS_DIR"; then
+            exit 1
+        fi
+
         # ----------------------------------------------------------
         # Phase 2: vLLM wheels
         # ----------------------------------------------------------
@@ -1335,7 +1374,7 @@ if [ "$NO_BUILD" = false ]; then
         generate_build_metadata Dockerfile "$VLLM_VERSION" "$VLLM_COMMIT" "$FLASHINFER_COMMIT" \
             "$VLLM_REF" "true" "false" "$VLLM_PRS" "$VLLM_REPO" "$TORCH_VERSION" \
             "${TORCHVISION_VERSION:-resolver-selected}" "${TORCHAUDIO_VERSION:-resolver-selected}" \
-            "${B12X_REPO:-disabled}" "${B12X_REF:-disabled}" "$CUTLASS_DSL_VERSION"
+            "${B12X_REPO:-disabled}" "${B12X_REF:-disabled}" "$CUTLASS_DSL_VERSION" "$B12X_FROM_PYPI"
 
         RUNNER_CMD=("docker" "build"
             "-t" "$IMAGE_TAG"
@@ -1346,6 +1385,10 @@ if [ "$NO_BUILD" = false ]; then
         if [ -n "$B12X_REPO" ]; then
             RUNNER_CMD+=("--build-arg" "B12X_REPO=$B12X_REPO")
             RUNNER_CMD+=("--build-arg" "B12X_REF=$B12X_REF")
+        elif [ "$B12X_FROM_PYPI" = "1" ]; then
+            RUNNER_CMD+=("--build-arg" "B12X_FROM_PYPI=$B12X_FROM_PYPI")
+        fi
+        if [ -n "$B12X_CACHEBUST" ]; then
             RUNNER_CMD+=("--build-arg" "B12X_CACHEBUST=$B12X_CACHEBUST")
         fi
 

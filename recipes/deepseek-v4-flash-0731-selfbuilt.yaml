@@ -40,8 +40,8 @@ build_args:
 
 cluster_only: true
 
-mods:
-  - mods/instanttensor-hybrid-draft-loader
+mods: []
+#  - mods/instanttensor-hybrid-draft-loader
 #   - mods/drop-caches
 
 defaults:
@@ -92,7 +92,7 @@ command: |
       --reasoning-config '{{"reasoning_parser":"deepseek_v4","reasoning_start_str":"","reasoning_end_str":""}}' \
       --default-chat-template-kwargs.thinking=true \
       --default-chat-template-kwargs.reasoning_effort=high \
-      --load-format instanttensor \
+      --load-format b12x \
       --moe-backend b12x \
       --linear-backend b12x \
       --attention-backend B12X_MLA_SPARSE \
