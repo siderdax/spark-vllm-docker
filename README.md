@@ -24,6 +24,7 @@ These recipes and `run-*.sh` wrappers exist only in this fork (not upstream):
 | Qwen3.5-122B-NVFP4 | `custom_recipes/qwen3.5-122b-nvfp4.yaml` | `run-qwen3.5-122b-nvfp4.sh` / `-solo` / `-pp2` |
 | DeepSeek-V4-Flash | `custom_recipes/deepseek-v4-flash.yaml` | `run-dsv4f.sh` |
 | DeepSeek-V4-Flash-0731 | `custom_recipes/deepseek-v4-flash-0731.yaml` | `run-dsv4f-0731.sh` |
+| DeepSeek-V4-Flash-Vision-Exp | `custom_recipes/deepseek-v4-flash-vision-exp.yaml` | `run-dsv4f-vision-exp.sh` |
 | MiniMax-M2.7-NVFP4 | `custom_recipes/minimax-m2.7-nvfp4.yaml` | `run-minimax-m2.7.sh` |
 | GLM-5.3-Flash-NVFP4 + DFlash2 | `custom_recipes/glm5.3-flash-dflash2.yaml` | `run-glm5.3-flash-dflash2.sh` |
 | Qwen3.8-Flash-Next-NVFP4 + MTP-4 | `custom_recipes/qwen3.8-flash-next-nvfp4.yaml` | `run-qwen3.8-flash-next.sh` |
@@ -39,6 +40,33 @@ Every wrapper forwards extra args straight to `run-recipe.sh`/`run-recipe.py` (`
 ## CHANGELOG (fork-specific)
 
 For the full project history before this fork diverged, see the [original repository's CHANGELOG](https://github.com/eugr/spark-vllm-docker#changelog).
+
+### 2026-10-01
+
+#### Upstream merge, image refresh, Vision-Exp recipe
+
+Merged upstream main (38 commits; only README conflicted, fork README kept). Only
+`custom_recipes/` is used here, so upstream `recipes/` changes were cherry-picked by hand.
+
+- **`vllm-node` rebuilt** from vLLM main with upstream's SWA block-size patch
+  (`./build-and-copy.sh -t vllm-node-new --rebuild-vllm --copy-to`, then retagged to
+  `vllm-node` on both nodes; the built-in copy ran out of `/tmp`, so it was streamed with
+  `docker save | ssh docker load`). Qwen3.8-27B + DFlash2: KV 3.0M -> 3.57M tokens, prefill
+  +18% (pp2048) with `--async-scheduling`; decode unchanged. Flash-Next re-verified (9/9).
+- **DeepSeek-V4-Flash-0731:** `--load-format b12x` on the refreshed
+  `eugr/spark-vllm-b12x:latest` (9/9, decode ~37 t/s).
+- **DeepSeek-V4-Flash-Vision-Exp:** new recipe + `run-dsv4f-vision-exp.sh`; 9/9, decode
+  37-39 t/s (similar to 0731), image input verified, KV 812K tokens at 500K context.
+- **27B tuning knobs, all rejected** (same image, async on, earlyoom on; baseline decode
+  ~40.8 t/s, prefill 3793 / 3342 t/s): 8 draft tokens (decode 38.3), `max_num_batched_tokens`
+  16384 (prefill 3289 / 2886), `--load-format instanttensor` (same throughput, load 12.6 s vs
+  ~61 s). `--enable-chunked-prefill` is already the default.
+- **Upstream `--earlyoom` works** with `run-recipe.sh` (PID 1 in the container on both nodes,
+  no throughput cost). Upstream `mods/memory-profile` does **not** apply to our `vllm-node`
+  (`memory-profile: Expected request_memory(snapshot, cache_config) in init_device`); it may
+  only fit the b12x image.
+- Upstream's RoCE allreduce env vars exist only in the b12x image, not in `vllm-node`.
+- Models/images are backed up on fregata (`/mnt/HDD2/models`, `/mnt/HDD2/docker_images`).
 
 ### 2026-08-30
 

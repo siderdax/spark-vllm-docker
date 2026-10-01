@@ -15,8 +15,9 @@
 #   * max_model_len 500000 (upstream "auto"), VLLM_ALLOW_LONG_MAX_MODEL_LEN=1,
 #     --enable-prefix-caching, ray executor backend, reasoning_effort=max and the
 #     top_p 0.95 override: our 0731 conventions.
-# Kept from upstream: dspark with 6 draft tokens (0731 uses 7), --load-format b12x,
-# max_cudagraph_capture_size 48.
+# Kept from upstream: --load-format b12x,
+# max_cudagraph_capture_size 48. Draft tokens set to 7 (same as our 0731; upstream uses 6),
+# decided without a 6-vs-7 benchmark. The 9/9 verification below was run with 6.
 #
 # Model cache was copied from fregata (/mnt/HDD2/models), not downloaded. Launch with
 # ./run-dsv4f-vision-exp.sh --env HF_HUB_OFFLINE=1 --env TRANSFORMERS_OFFLINE=1
@@ -43,7 +44,7 @@ defaults:
   max_num_seqs: 8
   max_num_batched_tokens: 8192
   max_cudagraph_capture_size: 48
-  num_speculative_tokens: 6
+  num_speculative_tokens: 7
 
 env:
   DG_JIT_USE_NVRTC: "0"

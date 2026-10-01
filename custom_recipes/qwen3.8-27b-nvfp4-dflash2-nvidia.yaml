@@ -69,6 +69,10 @@ description: vLLM serving nvidia/Qwen3.8-27B-NVFP4 on DGX Spark (tp2) with DFlas
 # within the +/-3 spread). --enable-chunked-prefill is already the default, so it
 # is not passed. Sibling recipes use the same `vllm-node` image now (Flash-Next re-verified
 # on it 9/9, decode ~33 t/s, same as before).
+# Tried on the same image (async on): 8 draft tokens, --max-num-batched-tokens 16384 and
+# --load-format instanttensor. None beat the current settings (decode 38.3 / ~41 / ~40 t/s vs
+# ~40.8; prefill 3523 / 3289 / 3682 vs 3793 t/s at pp2048), so the recipe is unchanged.
+# instanttensor only cuts model load from ~61 s to ~13 s.
 
 # HuggingFace model
 model: nvidia/Qwen3.8-27B-NVFP4
