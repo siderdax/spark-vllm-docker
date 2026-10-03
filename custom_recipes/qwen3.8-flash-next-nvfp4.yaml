@@ -70,6 +70,15 @@
 # (pp2048 / pp16384), prefill 2776 / 3427 t/s; same as on the 09-09 image (32.5 / 33.0).
 # KV cache 1,829,430 tokens (was 2,426,226). Model cache restored from fregata.
 
+# 2026-10-03: gpu_memory_utilization 0.85 -> 0.80. Sweep over 0.70-0.85 (eager and CUDA graph,
+# caches dropped before each point, benchmarked from raven and fregata) showed no speed difference:
+# decode ~29-39 t/s, prefill pp16384 ~3400-3490 t/s, spreads overlap; CUDA graphs (no --enforce-eager)
+# gave no gain and cost ~16% KV, so --enforce-eager stays. util only trades KV for free memory:
+# 0.85 -> KV ~1.78M tokens, 5-7 GB available after a bench (tightest); 0.80 -> KV 1.38M tokens, 11-13 GB
+# available (measured: 9/9, decode 33.6 / 38.5 t/s, prefill 2523 / 3425). 262144 context still fits ~5x.
+# Benchmark tip: drop page cache + compact memory on both nodes before measuring (kswapd/kcompactd
+# drift made identical configs differ by up to 40% before a reboot).
+
 recipe_version: "1"
 name: Qwen3.8-Flash-Next-NVFP4
 description: vLLM serving nvidia/Qwen3.8-Flash-Next-NVFP4 on 2x DGX Spark (TP2) with MTP-4, on a from-main vllm-node build -- active default
@@ -93,7 +102,7 @@ defaults:
   port: 8000
   host: 0.0.0.0
   tensor_parallel: 2
-  gpu_memory_utilization: 0.85
+  gpu_memory_utilization: 0.80
   max_model_len: 262144
   max_num_batched_tokens: 8192
   max_num_seqs: 8
