@@ -9,10 +9,29 @@
 # prefill 3-8% lower. KV cache 812,239 tokens (1.62x at 500K; 0731: 699,629). Image
 # input works (red background / blue square described correctly via chat completions).
 #
+# RE-MEASURED 2026-10-12 (eugr/spark-vllm-b12x image 2b82c1e04214, fresh boot, kernel 7.0.0-1019, endpoint
+# idle, page cache not dropped), 3 llama-benchy runs each (decode pp2048 / pp16384, prefill pp2048 / pp16384),
+# context-bench 9/9 at both settings:
+#   util 0.85: decode 36.2 / 38.0 t/s, prefill 2117 / 2334 t/s, KV 840,956 tokens (1.68x at 500K),
+#              available memory ~9-10 GB right after startup
+#   util 0.81: decode 34.2 / 36.3 t/s, prefill 2069 / 2325 t/s, KV 540,122 tokens (1.08x at 500K),
+#              available ~11-12 GB during the bench (13.8-14.9 GB right after startup)
+# 0.81 is the lowest util that still serves one max_model_len=500000 request: at 0.80 startup fails
+# (8.06 GiB KV needed, 7.76 GiB available). decode with 0.81 is ~4-5% lower, within run-to-run spread
+# (std up to +-4); prefill is the same. The 5-10% decode drop seen earlier on 10-12 (before the reboot)
+# did not reproduce: it was the node state, not the image. Keep 0.85 unless the free memory matters more
+# than 2 concurrent 500K requests. The model card gives no util value (vLLM example omits it; the 0.85 in
+# its SGLang example is --mem-fraction-static).
+
+# 2026-10-12: max_model_len 500000 -> 393216 (384K) at util 0.85 so that 2 requests of full length fit at
+# once: expected concurrency 840,956 / 393,216 = 2.14x (was 1.68x at 500K). Computed, not yet confirmed in a
+# startup log ("Maximum concurrency for 393,216 tokens per request" line). Util 0.84 would give ~1.95x at 384K.
+# The numbers above were measured with max_model_len 500000; KV size depends on util only.
+
 # Differences from upstream:
 #   * container: eugr/spark-vllm-b12x:latest directly (same as our 0731 recipe), instead
 #     of vllm-node-b12x + build_args --exp-b12x. Pull it on every node first.
-#   * max_model_len 500000 (upstream "auto"), VLLM_ALLOW_LONG_MAX_MODEL_LEN=1,
+#   * max_model_len 393216 = 384K (upstream "auto"; was 500000 until 2026-10-12), VLLM_ALLOW_LONG_MAX_MODEL_LEN=1,
 #     --enable-prefix-caching, ray executor backend, reasoning_effort=max and the
 #     top_p 0.95 override: our 0731 conventions.
 # Kept from upstream: --load-format b12x,
@@ -39,7 +58,7 @@ defaults:
   host: 0.0.0.0
   tensor_parallel: 2
   gpu_memory_utilization: 0.85
-  max_model_len: 500000
+  max_model_len: 393216
   block_size: 256
   max_num_seqs: 8
   max_num_batched_tokens: 8192
