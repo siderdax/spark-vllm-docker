@@ -23,7 +23,11 @@ These recipes and `run-*.sh` wrappers exist only in this fork (not upstream). On
 | DeepSeek-V4-Flash-Vision-Exp | `custom_recipes/deepseek-v4-flash-vision-exp.yaml` | `run-dsv4f-vision-exp.sh` |
 
 The FP4-Local checkpoints use a scale-factor format upstream vLLM cannot read yet, so they run on the community
-`eugr/spark-vllm-b12x:latest` image (2026-10-26 build or newer). Reserved wrappers (model cache not on the
+`eugr/spark-vllm-b12x:latest` image (2026-10-26 build or newer). The recipes use upstream's A16 MoE settings (`VLLM_B12X_MOE_FP4_FORCE_A16`, `B12X_W4A16_A4_PREFILL`): a
+precision setting, not a speed one (our runs: prefill/decode within noise, KV 4% larger on tp2 and 6% smaller solo, and about half on
+GLM). GLM runs at `max_model_len` 393,216 for that reason. The previous recipes are kept as `*-baseline.yaml` in `custom_recipes/`.
+For the tp2 Flash-Next wrapper, old clients that still ask for `nvidia/Qwen3.8-Flash-Next-NVFP4` need
+`./run-qwen3.8-flash-next-fp4-local-cluster.sh -- --served-model-name nvidia/Qwen3.8-Flash-Next-FP4-Local nvidia/Qwen3.8-Flash-Next-NVFP4`. Reserved wrappers (model cache not on the
 nodes, or superseded) live in `reserved_runs/`: Qwen3.8-27B-NVFP4 + DFlash2, DeepSeek-V4-Flash-0731,
 GLM-5.3-Flash-NVFP4 + DFlash2, Qwen3.8-Flash-Next-NVFP4. Run them from the repo root, e.g. `./reserved_runs/run-qwen3.8-flash-next.sh`.
 
