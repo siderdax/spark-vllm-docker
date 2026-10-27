@@ -17,18 +17,21 @@ These recipes and `run-*.sh` wrappers exist only in this fork (not upstream). On
 
 | Model | Recipe(s) | Wrappers |
 |---|---|---|
-| Qwen3.8-27B-NVFP4 + DFlash2 | `custom_recipes/qwen3.8-27b-nvfp4-dflash2-nvidia.yaml` | `run-qwen3.8-27b-dflash2.sh` |
-| DeepSeek-V4-Flash-0731 | `custom_recipes/deepseek-v4-flash-0731.yaml` | `run-dsv4f-0731.sh` |
+| Qwen3.8-Flash-Next-FP4-Local + MTP-4 (solo) | `custom_recipes/qwen3.8-flash-next-fp4-local-solo.yaml` | `run-qwen3.8-flash-next-fp4-local-solo.sh` |
+| Qwen3.8-Flash-Next-FP4-Local + MTP-4 (tp2) | `custom_recipes/qwen3.8-flash-next-fp4-local-cluster.yaml` | `run-qwen3.8-flash-next-fp4-local-cluster.sh` |
+| GLM-5.3-Flash-FP4-Local + MTP-5 (tp2) | `custom_recipes/glm5.3-flash-fp4-local.yaml` | `run-glm5.3-flash-fp4-local.sh` |
 | DeepSeek-V4-Flash-Vision-Exp | `custom_recipes/deepseek-v4-flash-vision-exp.yaml` | `run-dsv4f-vision-exp.sh` |
-| GLM-5.3-Flash-NVFP4 + DFlash2 | `custom_recipes/glm5.3-flash-dflash2.yaml` | `run-glm5.3-flash-dflash2.sh` |
-| Qwen3.8-Flash-Next-NVFP4 + MTP-4 | `custom_recipes/qwen3.8-flash-next-nvfp4.yaml` | `run-qwen3.8-flash-next.sh` |
+
+The FP4-Local checkpoints use a scale-factor format upstream vLLM cannot read yet, so they run on the community
+`eugr/spark-vllm-b12x:latest` image (2026-10-26 build or newer). Reserved wrappers (model cache not on the
+nodes, or superseded) live in `reserved_runs/`: Qwen3.8-27B-NVFP4 + DFlash2, DeepSeek-V4-Flash-0731,
+GLM-5.3-Flash-NVFP4 + DFlash2, Qwen3.8-Flash-Next-NVFP4. Run them from the repo root, e.g. `./reserved_runs/run-qwen3.8-flash-next.sh`.
 
 ```bash
-./run-qwen3.8-27b-dflash2.sh      # Qwen3.8-27B-NVFP4 + DFlash2, tp2 cluster (raven+quaker)
-./run-qwen3.8-flash-next.sh       # Qwen3.8-Flash-Next-NVFP4 + MTP-4, tp2 cluster
-./run-dsv4f-0731.sh               # DeepSeek-V4-Flash-0731 + DSpark
-./run-dsv4f-vision-exp.sh         # DeepSeek-V4-Flash-Vision-Exp + DSpark
-./run-glm5.3-flash-dflash2.sh     # GLM-5.3-Flash-NVFP4 + DFlash2
+./run-qwen3.8-flash-next-fp4-local-solo.sh     # Qwen3.8-Flash-Next-FP4-Local + MTP-4, one node
+./run-qwen3.8-flash-next-fp4-local-cluster.sh  # same, tp2 cluster (raven+quaker)
+./run-glm5.3-flash-fp4-local.sh                # GLM-5.3-Flash-FP4-Local + MTP-5, tp2 cluster
+./run-dsv4f-vision-exp.sh                      # DeepSeek-V4-Flash-Vision-Exp + DSpark
 ```
 
 The wrappers only launch the server; they do not verify it. Check a fresh image or recipe with
@@ -67,7 +70,7 @@ Merged upstream main (38 commits; only README conflicted, fork README kept). Onl
   (`memory-profile: Expected request_memory(snapshot, cache_config) in init_device`); it may
   only fit the b12x image.
 - Upstream's RoCE allreduce env vars exist only in the b12x image, not in `vllm-node`.
-- Models/images are backed up on fregata (`/mnt/HDD2/models`, `/mnt/HDD2/docker_images`).
+- Models/images are backed up on fregata (`/mnt/HDD2/models`, `/mnt/HDD2/docker_images`). Interim model backups (HF cache layout, hash-verified) are on kestrel `~/Shared/raven-backup/models`: Qwen3.8-27B-NVFP4, Qwen3.8-27B-DFlash2, Qwen3.8-Flash-Next-NVFP4, DeepSeek-V4-Flash-0731.
 
 ### 2026-08-30
 

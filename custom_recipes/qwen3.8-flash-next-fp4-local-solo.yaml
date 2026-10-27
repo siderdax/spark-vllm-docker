@@ -1,0 +1,81 @@
+# Recipe: Qwen3.8-Flash-Next-FP4-Local (solo) -- NVIDIA first-party QAD checkpoint (NVFP4 experts + MXFP8 attention)
+#
+# Added 2026-10-27 to benchmark against nvidia/Qwen3.8-Flash-Next-NVFP4
+# (custom_recipes/qwen3.8-flash-next-nvfp4.yaml).
+# VERIFIED 2026-10-27 solo (util 0.80, PLE on disk, eugr/spark-vllm-b12x built 2026-10-26): raven KV 956,466 tokens
+# (3.65x at 262K), quaker KV 896,799 (3.42x). context-bench 12/12 on raven up to 243K; on quaker 3/3 at 260,279 tokens
+# (max-model-len 262144 works). llama-benchy pp2048/pp16384: prefill 1633/2024 t/s, decode 36.8/37.8 t/s.
+# First start ~18-21 min (b12x tuning), later starts faster. ~16 GB RAM free after load, so keep other big jobs off the node.
+# context-bench asks for 1500 output tokens: prompts over ~260.6K tokens get a 400 (not an OOM).
+# Adapted from recipes/qwen3.8-flash-next-nvfp4-solo.yaml (b12x stack), which matches the
+# Spark launch on the model card. The checkpoint's NVFP4 scale factors use a compression
+# format upstream vLLM can't read yet, so it needs the community eugr/spark-vllm-b12x image.
+# MTP-4 per the card (also the QSA ring/block-size divisibility constraint, see the
+# nvidia NVFP4 recipe header).
+
+recipe_version: "1"
+name: Qwen3.8-Flash-Next-FP4-Local (Solo)
+description: vLLM serving nvidia/Qwen3.8-Flash-Next-FP4-Local on one DGX Spark with PLE disk offload
+
+model: nvidia/Qwen3.8-Flash-Next-FP4-Local
+container: eugr/spark-vllm-b12x:latest
+
+solo_only: true
+
+mods: []
+
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  served_model_name: nvidia/Qwen3.8-Flash-Next-FP4-Local
+  tensor_parallel: 1
+  pipeline_parallel: 1
+  block_size: 16
+  max_model_len: 262144
+  max_num_seqs: 8
+  max_num_batched_tokens: 4096
+  num_speculative_tokens: 4
+  gpu_memory_utilization: 0.8
+
+env:
+  VLLM_PLE_TABLE_MEMORY: "disk"
+  CUTE_DSL_ARCH: "sm_121a"
+  SAFETENSORS_FAST_GPU: "1"
+  VLLM_WORKER_MULTIPROC_METHOD: "spawn"
+  VLLM_SSM_CONV_STATE_LAYOUT: "DS"
+  VLLM_USE_AOT_COMPILE: "1"
+  VLLM_USE_MEGA_AOT_ARTIFACT: "1"
+  VLLM_USE_V2_MODEL_RUNNER: "1"
+  B12X_POLICY_MODE: "auto"
+  VLLM_MXFP8_LM_HEAD: "1" 
+  VLLM_B12X_MOE_FP4_LAYER_MAX_INPUT_SCALE: "w13"
+
+command: |
+  vllm serve nvidia/Qwen3.8-Flash-Next-FP4-Local \
+    --host {host} \
+    --port {port} \
+    --served-model-name {served_model_name} \
+    --tensor-parallel-size {tensor_parallel} \
+    --pipeline-parallel-size {pipeline_parallel} \
+    --mamba-cache-mode align \
+    --enable-prefix-caching \
+    --enable-chunked-prefill \
+    --dtype bfloat16 \
+    --kv-cache-dtype fp8 \
+    --quantization modelopt_mixed \
+    --block-size {block_size} \
+    --load-format b12x \
+    --max-model-len {max_model_len} \
+    --max-num-seqs {max_num_seqs} \
+    --max-num-batched-tokens {max_num_batched_tokens} \
+    --speculative-config '{{"method":"mtp","num_speculative_tokens":{num_speculative_tokens}}}' \
+    --gdn-decode-kernel b12x \
+    --linear-backend b12x \
+    --moe-backend b12x \
+    --no-enable-flashinfer-autotune \
+    --mm-encoder-tp-mode data \
+    --reasoning-parser qwen3 \
+    --tool-call-parser qwen3_xml \
+    --enable-auto-tool-choice \
+    --compilation-config '{{"pass_config":{{"fuse_act_quant":true}}}}' \
+    --gpu-memory-utilization {gpu_memory_utilization}

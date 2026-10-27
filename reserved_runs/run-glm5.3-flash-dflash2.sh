@@ -1,4 +1,6 @@
 #!/bin/bash
+# RESERVED as of 2026-10-27 -- superseded by run-glm5.3-flash-fp4-local.sh. The RedHatAI/GLM-5.3-Flash-NVFP4
+# and DFlash2 caches live only on fregata (/mnt/HDD2/models), not on raven/quaker; copy them over first.
 # Serve GLM-5.3-Flash-NVFP4 (RedHatAI checkpoint) + DFlash2 speculative
 # decoding on the 2-node cluster (raven+quaker, TP=2), using tonyd2wild's
 # pre-built sm121-v11-dflash2 image instead of our own runtime-patched
@@ -11,7 +13,7 @@
 #   - image pulled+retagged as radixark/vllm-glm53-flash:sm121-v11-dflash2
 #   - RedHatAI/GLM-5.3-Flash-NVFP4 + incoai/GLM-5.3-Flash-DFlash2 in HF cache
 #   - ~/patches/sparse_attn_indexer_kpool.py present on BOTH nodes
-cd "$(dirname "${BASH_SOURCE[0]}")"
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # Mandatory before every launch at large context (see recipe header /
 # upstream docs/KV-HUNT-672K-TP2-RECORD.md): a dirty page cache on either

@@ -1,0 +1,80 @@
+# Recipe: Qwen3.8-Flash-Next-FP4-Local (cluster) -- NVIDIA first-party QAD checkpoint (NVFP4 experts + MXFP8 attention)
+#
+# Added 2026-10-27 to benchmark against nvidia/Qwen3.8-Flash-Next-NVFP4
+# (custom_recipes/qwen3.8-flash-next-nvfp4.yaml).
+# VERIFIED 2026-10-27 on raven+quaker (eugr/spark-vllm-b12x built 2026-10-26, util 0.70): KV 2,283,927 tokens
+# (8.71x at 262K; 836K when a download/backup filled the file cache), context-bench 12/12 (8K-243K),
+# llama-benchy pp2048/pp16384: prefill 2511/2937 t/s, decode 43.0/42.5 t/s. Ready in 5-11 min (b12x compile cache warm).
+# The 2026-10-11 image fails with ImportError CsfScalePlanes (renamed CsfBlockPlanes) -- use the 10-26 build or newer.
+# The image logs a harmless ImportError for 'valid_object' (artifacts.py vs cache_integrity.py mismatch) at start.
+# Adapted from recipes/qwen3.8-flash-next-nvfp4-cluster.yaml (b12x stack), which matches the
+# Spark launch on the model card. The checkpoint's NVFP4 scale factors use a compression
+# format upstream vLLM can't read yet, so it needs the community eugr/spark-vllm-b12x image.
+# MTP-4 per the card (also the QSA ring/block-size divisibility constraint, see the
+# nvidia NVFP4 recipe header).
+
+recipe_version: "1"
+name: Qwen3.8-Flash-Next-FP4-Local (Cluster)
+description: vLLM serving nvidia/Qwen3.8-Flash-Next-FP4-Local on a dual DGX Spark cluster
+
+model: nvidia/Qwen3.8-Flash-Next-FP4-Local
+container: eugr/spark-vllm-b12x:latest
+
+cluster_only: true
+
+mods: []
+
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  served_model_name: nvidia/Qwen3.8-Flash-Next-FP4-Local
+  tensor_parallel: 2
+  pipeline_parallel: 1
+  block_size: 16
+  max_model_len: 262144
+  max_num_seqs: 16
+  max_num_batched_tokens: 4096
+  num_speculative_tokens: 4
+  gpu_memory_utilization: 0.7
+
+env:
+  CUTE_DSL_ARCH: "sm_121a"
+  SAFETENSORS_FAST_GPU: "1"
+  VLLM_WORKER_MULTIPROC_METHOD: "spawn"
+  VLLM_SSM_CONV_STATE_LAYOUT: "DS"
+  VLLM_USE_AOT_COMPILE: "1"
+  VLLM_USE_MEGA_AOT_ARTIFACT: "1"
+  VLLM_USE_V2_MODEL_RUNNER: "1"
+  B12X_POLICY_MODE: "auto"
+  VLLM_ENABLE_ROCE_ALLREDUCE: "1"
+  VLLM_ROCE_ALLREDUCE_MAX_SIZE: "2MB"
+
+command: |
+  vllm serve nvidia/Qwen3.8-Flash-Next-FP4-Local \
+    --host {host} \
+    --port {port} \
+    --served-model-name {served_model_name} \
+    --tensor-parallel-size {tensor_parallel} \
+    --pipeline-parallel-size {pipeline_parallel} \
+    --mamba-cache-mode align \
+    --enable-prefix-caching \
+    --enable-chunked-prefill \
+    --dtype bfloat16 \
+    --kv-cache-dtype fp8 \
+    --quantization modelopt_mixed \
+    --block-size {block_size} \
+    --load-format b12x \
+    --max-model-len {max_model_len} \
+    --max-num-seqs {max_num_seqs} \
+    --max-num-batched-tokens {max_num_batched_tokens} \
+    --speculative-config '{{"method":"mtp","num_speculative_tokens":{num_speculative_tokens}}}' \
+    --gdn-decode-kernel b12x \
+    --linear-backend b12x \
+    --moe-backend b12x \
+    --no-enable-flashinfer-autotune \
+    --mm-encoder-tp-mode data \
+    --reasoning-parser qwen3 \
+    --tool-call-parser qwen3_xml \
+    --enable-auto-tool-choice \
+    --compilation-config '{{"pass_config":{{"fuse_act_quant":true}}}}' \
+    --gpu-memory-utilization {gpu_memory_utilization}
